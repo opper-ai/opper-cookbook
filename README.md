@@ -4,8 +4,8 @@ This repository contains various examples and guides to easily get started with 
 
 ## Going deeper
 
-- Our blog contains technical deep dives
-- Our docs contain a lot of examples and further explanations about our concepts
+- Our [blog](https://opper.ai/blog) contains technical deep dives
+- Our [documentation](https://docs.opper.ai/) contains a lot of examples and further explanations about our concepts.
 
 
 
