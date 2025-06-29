@@ -22,7 +22,7 @@ By running 50 complete round-robins, we observe how quickly few-shot learning ac
 | gpt-4.1-mini-reason-few   | REASONING | 3             |
 | gpt-4.1-mini-reason-many  | REASONING | 10            |
 
-Each round, every player faces every other player → \(\binom{6}{2} = 15\) matches per round, for a total of 750 matches.
+Each round, every player faces every other player → C(6, 2) = 15 matches per round, for a total of 750 matches.
 
 ---
 
@@ -38,18 +38,77 @@ We treat illegal moves as losses. Few-shot variants are expected to reduce these
 
 ## Key Observations
 
-**1. Few-shot examples dominate**  
-After ~10 rounds, the 3-example players clearly pull ahead.
+A perfect Tic-Tac-Toe game is always a 9-move tie. In our tournament:
 
-**2. Reasoning hurts at this scale**  
-CoT variants output longer, messier responses and are more prone to illegal moves. They finish last. It only seems to help with the examples with a higher amount of examples passed. (Mini-reason-many)
+- **Average length:** 7.31 moves  
+- **Outcomes:**
+  - 72% of matches ended in a **win**
+  - 22% ended in a **tie**
+  - 6% were **illegal moves**
 
-**3. First-move advantage is real**  
-Piece X wins ≈ 70% of decisive games. Even with fair shuffling, that edge is visible.
+This reveals two key things:
+1. Most games finish early due to blunders.
+2. Wins happen fast: the **median winning game ended on move 7**.
+
+The starting side ("X") frequently converted early forks into wins.  
+**Piece X won 70% of decisive games** and, on average, **half a move earlier than O**.
 
 ---
 
-## First-Move Advantage
+### 📊 Summary Stats
+
+**Overall average moves per match:** 7.31
+
+**Average moves per player:**
+
+| Player                    | Avg Moves |
+|---------------------------|------------|
+| gpt-4.1-mini-many         | 7.5        |
+| gpt-4.1-mini-zero         | 7.5        |
+| gpt-4.1-mini-reason       | 7.4        |
+| gpt-4.1-mini-reason-many  | 7.4        |
+| gpt-4.1-mini-few          | 7.1        |
+| gpt-4.1-mini-reason-few   | 7.0        |
+
+**Average moves per result:**
+
+| Result  | Games | Avg Moves |
+|---------|--------|------------|
+| ILLEGAL | 33     | 3.64       |
+| TIE     | 33     | 9.00       |
+| WIN     | 684    | 7.40       |
+
+**Median moves in winning games:** 7.0
+
+**Average moves by winning piece:**
+
+| Winner Piece | Avg Moves |
+|--------------|------------|
+| O            | 7.37       |
+| X            | 7.42       |
+---
+
+### 1. Few-Shot Examples Dominate
+
+After ~10 rounds, the **3-example players clearly pull ahead** in performance. Few-shot learning accumulates wins quickly.
+
+---
+
+### 2. Reasoning Hurts at This Scale
+
+Chain-of-Thought (CoT) variants produced longer, messier responses and were more prone to **illegal moves**.
+
+Reasoning *may* help when combined with many examples (e.g. `mini-reason-many`), but hurts in low-data setups.
+
+---
+
+### 3. First-Move Advantage Is Real
+
+Even with randomized starters, **piece X won ~70% of decisive games**. The opening move offers early opportunities to fork, which often become game-ending threats.
+
+---
+
+## First-Move Advantage - Explanation
 
 In our game setup, we flip a coin (50% chance) to decide who starts, and the starter receives piece 'X'.  
 The code used to randomize starters in `Tournament._run_match` is:
@@ -90,12 +149,15 @@ O_win_rate    29.8 %
 
 
 ## Plots
+
 ![Cumulative score](./assets/exp_0_cumulative_score.png)
 
 Zoom on the first 10 rounds:
+
 ![First 10 rounds](./assets/exp_0_score_10_rounds.png)
 
 Head-to-head matrix (rows = points *for*, columns = opponent):
+
 ![Heat-map](./assets/exp_0_heatmap.png)
 
 

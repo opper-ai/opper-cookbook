@@ -212,11 +212,8 @@ Packages: `pandas`, `matplotlib`, `seaborn`.
 - Implement warmup and rerun with double round robing (experiment 0.5) 
 - Run X tournaments, to account for variation, see if few-shot-mini wins every one
 - Play The same model against eachother in X matches -> see if its 50% chance
-- Analyze effect of reasoning, starting position and few shot
+- Analyze effect of reasoning
 - Reasoning before vs reasoning after (order of outputs)
 - Make better models play (do they achieve ties)
 
 
-# Notes
-Noticed that the response that contains reasoning, the move comes first, is Openai orderin alphabetically?
-```model_json_schema() (Pydantic v2) builds a Python dict whose properties keys are inserted in alphabetical order.```
