@@ -153,7 +153,8 @@ class Player:
                 instructions=instructions,
                 input_schema=TicTacToeInput.model_json_schema(),
                 output_schema=out_schema.model_json_schema(),
-                configuration={"invocation.few_shot.count": self.few_shot_count},
+                configuration={"invocation.few_shot.count": self.few_shot_count,
+                               "beta.evaluation.enabled": False}, # If you want to disable evaluation
             )
             self.function_id = fn.id
             self.dataset_id = getattr(fn, "dataset_id", None)
@@ -248,6 +249,7 @@ class Tournament:
         players: list[Player],
         rounds: int = 20,
         *,
+        warmup_rounds: int = 0,       # ⬅️  additional warm-up rounds (only these add examples)
         double_rounds: bool = True,   # play both "home" and "away" legs (X & O)
         semaphore: asyncio.Semaphore | None = None,
         schedule: ScheduleMode | str = ScheduleMode.SIMULTANEOUS,
@@ -261,6 +263,10 @@ class Tournament:
             The participants.
         rounds: int, default 20
             How many iterations of the selected *schedule* to play.
+        warmup_rounds: int, default **0**
+            Number of *warm-up* rounds played *before* the main tournament.  Winning
+            moves from these rounds are stored as few-shot examples.  Set to *0* to
+            disable additional training.
         double_rounds: bool, default **True**
             If *True* every pairing is played **twice** per round, once with
             each player starting ("home-and-away",   "double round-robin").
@@ -280,7 +286,12 @@ class Tournament:
         """
 
         self.players = players
-        self.rounds = rounds
+
+        # Store warm-up configuration.  We keep both counts separately but expose
+        # ``self.rounds`` as the **total** number of iterations so the rest of the
+        # code continues to work unchanged.
+        self._warmup_rounds = max(0, warmup_rounds)
+        self.rounds = rounds + self._warmup_rounds
         # normalise schedule to enum
         if isinstance(schedule, str):
             schedule = ScheduleMode(schedule)
@@ -378,39 +389,43 @@ class Tournament:
 
         if result == "WIN":
             winner = x_player if piece == "X" else o_player
+            loser  = o_player if winner is x_player else x_player  # new → identify loser explicitly
             logger.info(
-                "Match end | Round: %s | Winner: %s | Moves: %s",
+                "Match end | Round: %s | %s defeated %s | Moves: %s",
                 round_nr,
                 winner.name,
+                loser.name,
                 len(game.history),
             )
             self.scores[winner.name] += 1.0
+            self.scores[loser.name]  -= 1.0  # new → loser loses one point
 
-            # Add winning side's moves as few-shot examples for *both* players
-            await self._record_winning_examples(game, piece, (x_player, o_player))
+            # Add winning side's moves as few-shot examples **only during warm-up**
+            if round_nr < self._warmup_rounds:
+                await self._record_winning_examples(game, piece, (x_player, o_player))
 
         elif result == "TIE":
             logger.info(
-                "Match end | Round: %s | Result: TIE | Moves: %s",
+                "Match end | Round: %s | Tie between %s and %s | Moves: %s",
                 round_nr,
+                x_player.name,
+                o_player.name,
                 len(game.history),
             )
-            self.scores[x_player.name] += 0.5
-            self.scores[o_player.name] += 0.5
+            # zero-sum scoring: 0 points for a tie – no score change
 
         elif result == "ILLEGAL":
             offender = x_player if piece == "X" else o_player
             other = o_player if offender is x_player else x_player
             logger.info(
-                "Match end | Round: %s | Illegal move by: %s | Moves: %s",
+                "Match end | Round: %s | Illegal move by %s – %s awarded win | Moves: %s",
                 round_nr,
                 offender.name,
+                other.name,
                 len(game.history),
             )
             self.scores[offender.name] -= 1.0
-            self.scores[other.name] += (
-                1.0  # TODO review this, do we score the loser on illegal?
-            )
+            self.scores[other.name] += 1.0  # adjusted: full point to opponent
 
         # Persist match + moves if enabled and SQLAlchemy is available
         if self._persist:

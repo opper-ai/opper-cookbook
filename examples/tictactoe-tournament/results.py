@@ -60,12 +60,13 @@ def _scoring_rows(matches: pd.DataFrame) -> List[Dict[str, float]]:
     for _, r in matches.iterrows():
         if r.result == "WIN":
             winner = r.player_x if r.winner_piece == "X" else r.player_o
-            rows.append({winner: 1.0})
+            loser  = r.player_o if winner == r.player_x else r.player_x
+            rows.append({winner: 1.0, loser: -1.0})
         elif r.result == "TIE":
-            rows.append({r.player_x: 0.5, r.player_o: 0.5})
+            rows.append({r.player_x: 0.0, r.player_o: 0.0})
         elif r.result == "ILLEGAL":
             offender = r.player_x if r.winner_piece == "X" else r.player_o
-            other = r.player_o if offender == r.player_x else r.player_x
+            other    = r.player_o if offender == r.player_x else r.player_x
             rows.append({offender: -1.0, other: 1.0})
         else:  # pragma: no cover – safeguard future values
             rows.append({})
@@ -124,14 +125,15 @@ def head_to_head_matrix(tournament_id: int | None = None) -> pd.DataFrame:
             winner = r.player_x if r.winner_piece == "X" else r.player_o
             loser = r.player_o if winner == r.player_x else r.player_x
             mat.loc[winner, loser] += 1
+            mat.loc[loser, winner]  -= 1  # loser loses a point
         elif r.result == "TIE":
-            mat.loc[r.player_x, r.player_o] += 0.5
-            mat.loc[r.player_o, r.player_x] += 0.5
+            # zero points awarded for a tie in zero-sum scheme – nothing to record
+            pass
         elif r.result == "ILLEGAL":
             offender = r.player_x if r.winner_piece == "X" else r.player_o
             other = r.player_o if offender == r.player_x else r.player_x
             mat.loc[other, offender] += 1  # other player gains the point
-            mat.loc[offender, other] -= 1  # offender loses one (for completeness)
+            mat.loc[offender, other] -= 1  # offender loses one
     return mat
 
 

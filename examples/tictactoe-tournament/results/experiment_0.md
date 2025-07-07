@@ -161,3 +161,27 @@ Head-to-head matrix (rows = points *for*, columns = opponent):
 ![Heat-map](./assets/exp_0_heatmap.png)
 
 
+# Experiment 1
+Same setup as expriment 0 but with nano models
+Tournament id = 4
+
+
+## Findings
+
+Models make many more illegal moves, this seems to be much higher when you ask the model to reason, or when you pass it many examples (context seems to confuse the model.)
+These smaller models seem to strugle to understand the rules.
+Currently our rules also penalize heavily illegal moves (-1 in score) so a model making mistakes can drop dramatically in rankings.
+| model                    |   illegal_moves |
+|:-------------------------|----------------:|
+| gpt-4.1-nano-reason-many |              50 |
+| gpt-4.1-nano-many        |              28 |
+| gpt-4.1-nano-few         |              15 |
+| gpt-4.1-nano-reason-few  |              11 |
+| gpt-4.1-nano-reason      |               6 |
+| gpt-4.1-nano-zero        |               3 |
+
+![cumulative score](./assets/exp_1_cumulative_score.png)
+
+Head-to-head matrix (rows = points *for*, columns = opponent):
+
+![heatmap](./assets/exp_1_heatmap.png)

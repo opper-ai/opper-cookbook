@@ -209,8 +209,12 @@ Packages: `pandas`, `matplotlib`, `seaborn`.
 
 
 ## TODO
-- Implement warmup and rerun with double round robing (experiment 0.5) 
+- Implement warmup and rerun with double round robin (experiment 0.5) 
 - Run X tournaments, to account for variation, see if few-shot-mini wins every one
+- Same but for Nano
+
+- Same but for larger models 4.1 and 4o
+
 - Play The same model against eachother in X matches -> see if its 50% chance
 - Analyze effect of reasoning
 - Reasoning before vs reasoning after (order of outputs)
