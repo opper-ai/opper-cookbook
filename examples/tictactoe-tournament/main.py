@@ -37,7 +37,7 @@ async def main():
         # Player("gpt-4.1-nano-reason-few", "openai/gpt-4.1-nano", Strategy.REASONING, 3, opper),
         # Player("gpt-4.1-nano-reason-many", "openai/gpt-4.1-nano", Strategy.REASONING, 10, opper),
         # Player("gpt-4.1-nano-reason-few", "openai/gpt-4.1-nano", Strategy.REASONING, 3, opper),
-        # Player("gpt-4.1-mini-zero", "openai/gpt-4.1-mini", Strategy.ZERO_SHOT, 0, opper),
+        Player("gpt-4.1-mini-zero", "openai/gpt-4.1-mini", Strategy.ZERO_SHOT, 0, opper),
         Player("gpt-4.1-mini-few", "openai/gpt-4.1-mini", Strategy.FEW_SHOT, 3, opper),
         # Player("gpt-4.1-mini-many", "openai/gpt-4.1-mini", Strategy.FEW_SHOT, 10, opper),
         # # Player("gpt-4.1-mini-few-2", "openai/gpt-4.1-mini", Strategy.FEW_SHOT, 3, opper),
@@ -45,8 +45,8 @@ async def main():
         # Player("gpt-4.1-mini-reason", "openai/gpt-4.1-mini", Strategy.REASONING, 0, opper),
         # Player("gpt-4.1-mini-reason-few", "openai/gpt-4.1-mini", Strategy.REASONING, 3, opper),
         # Player("gpt-4.1-mini-reason-many", "openai/gpt-4.1-mini", Strategy.REASONING, 10, opper),
-        Player("gpt-4.1", "openai/gpt-4.1", Strategy.ZERO_SHOT, 0, opper),
-        # Player("gpt-4.1-few", "openai/gpt-4.1", Strategy.FEW_SHOT, 3, opper),
+        Player("gpt-4.1-zero", "openai/gpt-4.1", Strategy.ZERO_SHOT, 0, opper),
+        Player("gpt-4.1-few", "openai/gpt-4.1", Strategy.FEW_SHOT, 3, opper),
         # Player("gpt-4.1-many", "openai/gpt-4.1", Strategy.FEW_SHOT, 10, opper),
         # Player("gpt-4.1-reason", "openai/gpt-4.1", Strategy.REASONING, 0, opper),
         # Player("gpt-4.1-reason-few", "openai/gpt-4.1", Strategy.REASONING, 3, opper),
@@ -68,7 +68,7 @@ async def main():
 
     tourney = Tournament(
         players,
-        rounds=2,
+        rounds=10,
         semaphore=sem,
         schedule=schedule if schedule in {m.value for m in ScheduleMode} else ScheduleMode.SIMULTANEOUS,
         double_rounds=True,

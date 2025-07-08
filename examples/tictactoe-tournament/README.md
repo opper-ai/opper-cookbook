@@ -25,7 +25,7 @@ Opper makes the experiment friction-less: swap a model by editing one string, ch
 4. **Legs** – you can play **home-and-away** (aka *double round-robin*): every pairing is played twice per round so that both sides get to start once. In Tic-Tac-Toe this means 1 game with X one game with O.
 Disable with `double_rounds=False` when constructing `Tournament`. 
 5. **Persistence & analysis** – every match is recorded in `tictactoe.db`.  
-   `results.py` exposes helpers (`scores`, `heatmap`, `replay`, **`firstmove`**).
+   `results.py` exposes helpers (`scores`, `heatmap`, `replay`, `firstmove`).
 
 ---
 ## 2.  Running a tournament
@@ -54,10 +54,20 @@ matches  = 40 × (8·7/2) × 2 = 40 × 28 × 2 = 2240
 
 ---
 ## 3. Why Opper excels 
-This project showcases why Opper excels for LLM experimentation. Our task—running tournaments between LLMs with different settings—requires minimal setup thanks to Opper's Python SDK and powerful built-in features.
+This project showcases why Opper excels for LLM use. Our task—running tournaments between LLMs with different settings—requires minimal setup thanks to Opper's Python SDK and powerful built-in features.
 
 ### **Easy Task Management**
-Create or load LLM tasks with structured inputs, outputs, and configurations. Check our Pydantic models in [`schemas.py`](./schemas.py) for the data structures we use.
+Create or load LLM tasks with structured inputs, outputs, and configuration—all defined declaratively in code.
+
+Our task completion API takes in a **well-specified schema** that guides the model’s behavior. Using detailed schemas is one of the best ways to ensure the model does exactly what you want.
+📘 Check out our [schema guide](https://docs.opper.ai/capabilities/calls#extending-schemas) for best practices.
+
+In this project, see the Pydantic models in [`schemas.py`](./schemas.py) for the exact data structures used.
+
+**Model Selection is Seamless**
+
+Switching between models in Opper is as simple as changing a string. The same function setup works across any supported model—just update the model name.
+[👉 View all available models (80+)](https://docs.opper.ai/capabilities/models)
 
 ```python
 # Create a new function
@@ -72,7 +82,7 @@ instructions = (
     " 6 | 7 | 8\"
     "Use this index reference to decide your move."
 )
-fn = await opper.functions.create(  # async version for better performance
+fn = await opper.functions.create(  
     name="gpt-4.1-mini-few",
     model="openai/gpt-4.1",  # 80+ models available in Opper
     instructions=instructions,
@@ -85,7 +95,7 @@ fn = await opper.functions.create(  # async version for better performance
 fn = await opper.functions.get_by_name(name="player-1-play-tictactoe")
 ```
 
-This creates a beautiful interface in the Opper platform:
+This function appears with a clean, visual interface in the Opper platform:
 ![example_function](./assets/example_function.png)
 
 ### **Seamless Integration**
@@ -207,17 +217,5 @@ uv run  --extra analysis python results.py heatmap --tournament 1
 ```
 Packages: `pandas`, `matplotlib`, `seaborn`.
 
-
-## TODO
-- Implement warmup and rerun with double round robin (experiment 0.5) 
-- Run X tournaments, to account for variation, see if few-shot-mini wins every one
-- Same but for Nano
-
-- Same but for larger models 4.1 and 4o
-
-- Play The same model against eachother in X matches -> see if its 50% chance
-- Analyze effect of reasoning
-- Reasoning before vs reasoning after (order of outputs)
-- Make better models play (do they achieve ties)
 
 

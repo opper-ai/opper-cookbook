@@ -9,6 +9,8 @@ from opperai import Opper
 import random
 import datetime as _dt
 from datetime import UTC
+import contextlib
+from scoreboard import LiveScoreboard, ScoreboardEvent 
 
 # random.seed(42)
 
@@ -305,6 +307,15 @@ class Tournament:
 
         self.scores: defaultdict[str, float] = defaultdict(float)  # key = player.name
 
+        # Pre-populate scores so every player shows up from the start
+        for pl in players:
+            self.scores[pl.name] = 0.0
+
+        # Event queue for scoreboard communication
+        self._scoreboard_queue: asyncio.Queue[ScoreboardEvent] | None = None
+
+
+
     async def build_functions(self):
         await asyncio.gather(*(p.build() for p in self.players))
 
@@ -322,10 +333,20 @@ class Tournament:
 
         logger.info(f"Running tournament with id {self._tournament_id} and {self.rounds} rounds")
 
+        # ----------------------------------------------------------
+        # Start live scoreboard
+        # ----------------------------------------------------------
+        self._scoreboard_queue = asyncio.Queue()
+        player_names = [p.name for p in self.players]
+        scoreboard = LiveScoreboard(player_names, self._scoreboard_queue)
+        scoreboard_task = asyncio.create_task(scoreboard.run())
+        
+        # Signal tournament start
+        await self._send_scoreboard_event("tournament_started", {})
+
         if self.schedule is ScheduleMode.SIMULTANEOUS:
             tasks: list[asyncio.Task] = []
             for round_idx in range(self.rounds):
-                logger.info("Starting round %s (simultaneous mode)", round_idx)
                 for i, p1 in enumerate(self.players):
                     for p2 in self.players[i + 1 :]:
                         # first leg: p1 starts
@@ -338,7 +359,6 @@ class Tournament:
         elif self.schedule is ScheduleMode.BY_ROUND:
             # play neighbours only, wait for results between rounds
             for round_idx in range(self.rounds):
-                logger.info("Starting round %s (by_round mode)", round_idx)
                 shuffled = self.players[:]
                 random.shuffle(shuffled)
                 tasks = []
@@ -349,6 +369,13 @@ class Tournament:
                         tasks.append(self._run_match(b, a, round_nr=round_idx))
                 if tasks:
                     await asyncio.gather(*tasks)
+
+        # Stop live scoreboard and tidy up
+        await self._send_scoreboard_event("tournament_finished", {})
+        if scoreboard_task:
+            scoreboard_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await scoreboard_task
 
     async def _run_match(self, p1: Player, p2: Player, *, round_nr: int):
         """Run a single match between *p1* and *p2*.
@@ -364,18 +391,13 @@ class Tournament:
         else:
             x_player, o_player = p2, p1
 
-        # ------------------------------------------------------------------
+
         # Opper tracing – one span per match so the entire game is traceable
-        # ------------------------------------------------------------------
+
         match_span = x_player.opper.spans.create(name="tictactoe-match")
         span_id = match_span.id
 
-        logger.info(
-            "Match start | Round: %s | %s (X) vs %s (O)",
-            round_nr,
-            x_player.name,
-            o_player.name,
-        )
+
 
         # Create the game with the chosen order (first player is X)
         game = Game(x_player, o_player, parent_span_id=span_id)
@@ -390,42 +412,41 @@ class Tournament:
         if result == "WIN":
             winner = x_player if piece == "X" else o_player
             loser  = o_player if winner is x_player else x_player  # new → identify loser explicitly
-            logger.info(
-                "Match end | Round: %s | %s defeated %s | Moves: %s",
-                round_nr,
-                winner.name,
-                loser.name,
-                len(game.history),
-            )
             self.scores[winner.name] += 1.0
             self.scores[loser.name]  -= 1.0  # new → loser loses one point
+
+            # Send scoreboard event
+            await self._send_scoreboard_event("match_completed", {
+                "result": "WIN",
+                "winner": winner.name,
+                "loser": loser.name,
+                "players": [x_player.name, o_player.name]
+            })
 
             # Add winning side's moves as few-shot examples **only during warm-up**
             if round_nr < self._warmup_rounds:
                 await self._record_winning_examples(game, piece, (x_player, o_player))
 
         elif result == "TIE":
-            logger.info(
-                "Match end | Round: %s | Tie between %s and %s | Moves: %s",
-                round_nr,
-                x_player.name,
-                o_player.name,
-                len(game.history),
-            )
             # zero-sum scoring: 0 points for a tie – no score change
+            await self._send_scoreboard_event("match_completed", {
+                "result": "TIE",
+                "players": [x_player.name, o_player.name]
+            })
 
         elif result == "ILLEGAL":
             offender = x_player if piece == "X" else o_player
             other = o_player if offender is x_player else x_player
-            logger.info(
-                "Match end | Round: %s | Illegal move by %s – %s awarded win | Moves: %s",
-                round_nr,
-                offender.name,
-                other.name,
-                len(game.history),
-            )
             self.scores[offender.name] -= 1.0
             self.scores[other.name] += 1.0  # adjusted: full point to opponent
+
+            # Send scoreboard event
+            await self._send_scoreboard_event("match_completed", {
+                "result": "ILLEGAL",
+                "offender": offender.name,
+                "winner": other.name,
+                "players": [x_player.name, o_player.name]
+            })
 
         # Persist match + moves if enabled and SQLAlchemy is available
         if self._persist:
@@ -494,6 +515,8 @@ class Tournament:
         except Exception as e:
             # Don't fail the whole tournament if the Opper call fails
             logger.warning("Could not finalise span %s: %s", span_id, e)
+
+
 
     def _save_match(
         self,
@@ -575,3 +598,12 @@ class Tournament:
 
         if tasks:
             await asyncio.gather(*tasks)
+
+    # ------------------------------------------------------------------
+    # Scoreboard communication
+    # ------------------------------------------------------------------
+    async def _send_scoreboard_event(self, event_type: str, data: dict):
+        """Send an event to the scoreboard for display updates."""
+        if self._scoreboard_queue is not None:
+            event = ScoreboardEvent(event_type=event_type, data=data)
+            await self._scoreboard_queue.put(event)
