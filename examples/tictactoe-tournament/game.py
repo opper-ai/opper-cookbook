@@ -373,9 +373,8 @@ class Tournament:
         # Stop live scoreboard and tidy up
         await self._send_scoreboard_event("tournament_finished", {})
         if scoreboard_task:
-            scoreboard_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await scoreboard_task
+            # Let the scoreboard process the event and exit gracefully
+            await scoreboard_task
 
     async def _run_match(self, p1: Player, p2: Player, *, round_nr: int):
         """Run a single match between *p1* and *p2*.
