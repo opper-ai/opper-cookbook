@@ -14,6 +14,7 @@ The module can also be imported – key helpers:
 
 Dependencies (already common in DS stacks): pandas, matplotlib, seaborn, ipywidgets (for replay).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -26,27 +27,33 @@ import pandas as pd
 # Optional plotting libraries – keep runtime requirements mild.
 try:
     import matplotlib.pyplot as plt
-except ModuleNotFoundError: 
-    plt = None  
+except ModuleNotFoundError:
+    plt = None
 
 try:
     import seaborn as sns
-except ModuleNotFoundError: 
-    sns = None  
+except ModuleNotFoundError:
+    sns = None
 
 
 # Data helpers
 _DB_PATH = "tictactoe.db"
 
 
-def _fetch_matches(con: sqlite3.Connection | None = None, tournament_id: int | None = None) -> pd.DataFrame:
+def _fetch_matches(
+    con: sqlite3.Connection | None = None, tournament_id: int | None = None
+) -> pd.DataFrame:
     """Return the *matches* table as a DataFrame, optionally filtered by tournament_id."""
     own_con = con is None
     if con is None:
         con = sqlite3.connect(_DB_PATH)
     try:
         if tournament_id is not None:
-            return pd.read_sql("SELECT * FROM matches WHERE tournament_id = ?", con, params=(tournament_id,))
+            return pd.read_sql(
+                "SELECT * FROM matches WHERE tournament_id = ?",
+                con,
+                params=(tournament_id,),
+            )
         else:
             return pd.read_sql("SELECT * FROM matches", con)
     finally:
@@ -60,48 +67,55 @@ def _scoring_rows(matches: pd.DataFrame) -> List[Dict[str, float]]:
     for _, r in matches.iterrows():
         if r.result == "WIN":
             winner = r.player_x if r.winner_piece == "X" else r.player_o
-            loser  = r.player_o if winner == r.player_x else r.player_x
+            loser = r.player_o if winner == r.player_x else r.player_x
             rows.append({winner: 1.0, loser: -1.0})
         elif r.result == "TIE":
             rows.append({r.player_x: 0.0, r.player_o: 0.0})
         elif r.result == "ILLEGAL":
             offender = r.player_x if r.winner_piece == "X" else r.player_o
-            other    = r.player_o if offender == r.player_x else r.player_x
+            other = r.player_o if offender == r.player_x else r.player_x
             rows.append({offender: -1.0, other: 1.0})
-        else:  # pragma: no cover – safeguard future values
+        else:  # – safeguard future values
             rows.append({})
     return rows
 
 
-def cumulative_scores(tournament_id: int | None = None, max_rounds: int | None = None) -> pd.DataFrame:
+def cumulative_scores(
+    tournament_id: int | None = None, max_rounds: int | None = None
+) -> pd.DataFrame:
     """Return cumulative score per player after each round.
 
     Index = round_nr; Columns = player names; Values = cumulative score.
     """
     matches = _fetch_matches(tournament_id=tournament_id)
     if matches.empty:
-        raise ValueError("No matches found in the database – have you run a tournament yet?")
+        raise ValueError(
+            "No matches found in the database – have you run a tournament yet?"
+        )
 
     # Compute per-match points first
     scoring_rows = _scoring_rows(matches)
-    
+
     # Create a list of records for easier aggregation
     records = []
     for idx, (_, match) in enumerate(matches.iterrows()):
         points_dict = scoring_rows[idx]
         for player, points in points_dict.items():
-            records.append({
-                'round_nr': match['round_nr'],
-                'player': player,
-                'points': points
-            })
-    
+            records.append(
+                {"round_nr": match["round_nr"], "player": player, "points": points}
+            )
+
     if not records:
         raise ValueError("No scoring records found")
-    
+
     # Convert to DataFrame and aggregate by round and player
     scores_df = pd.DataFrame(records)
-    per_round = scores_df.groupby(['round_nr', 'player'])['points'].sum().unstack(fill_value=0).sort_index()
+    per_round = (
+        scores_df.groupby(["round_nr", "player"])["points"]
+        .sum()
+        .unstack(fill_value=0)
+        .sort_index()
+    )
 
     # Cumulative sum over rounds
     cum = per_round.cumsum()
@@ -125,7 +139,7 @@ def head_to_head_matrix(tournament_id: int | None = None) -> pd.DataFrame:
             winner = r.player_x if r.winner_piece == "X" else r.player_o
             loser = r.player_o if winner == r.player_x else r.player_x
             mat.loc[winner, loser] += 1
-            mat.loc[loser, winner]  -= 1  # loser loses a point
+            mat.loc[loser, winner] -= 1  # loser loses a point
         elif r.result == "TIE":
             # zero points awarded for a tie in zero-sum scheme – nothing to record
             pass
@@ -141,6 +155,7 @@ def head_to_head_matrix(tournament_id: int | None = None) -> pd.DataFrame:
 # first_move_advantage helper
 # ---------------------------------------------------------------------------
 
+
 def first_move_advantage(tournament_id: int | None = None) -> pd.Series:
     """Return basic stats on whether the starting side (X) wins more often.
 
@@ -152,7 +167,9 @@ def first_move_advantage(tournament_id: int | None = None) -> pd.Series:
     """
     m = _fetch_matches(tournament_id=tournament_id)
     if m.empty:
-        raise ValueError("No matches found in the database – have you run a tournament yet?")
+        raise ValueError(
+            "No matches found in the database – have you run a tournament yet?"
+        )
 
     decisive = m[m.result == "WIN"]
     x_wins = len(decisive[decisive.winner_piece == "X"])
@@ -173,7 +190,7 @@ def first_move_advantage(tournament_id: int | None = None) -> pd.Series:
 # Opper color palette
 PLOT_COLORS = [
     "#1B2E40",  # Blue Whale
-    "#3C3CAF",  # Savoy Purple  
+    "#3C3CAF",  # Savoy Purple
     "#8CF0DC",  # Water Leaf
     "#FFD7D7",  # Translucent Silk
     "#D3D3D3",  # Light Grey
@@ -183,64 +200,76 @@ PLOT_COLORS = [
 
 def plot_cumulative_scores(cum: pd.DataFrame, *, title: str | None = None) -> None:
     if plt is None:
-        raise RuntimeError("matplotlib is required for plotting – install it via `pip install matplotlib`. ")
+        raise RuntimeError(
+            "matplotlib is required for plotting – install it via `pip install matplotlib`. "
+        )
 
     title = title or "Cumulative tournament score"
-    
+
     # Use our custom color palette
-    colors = PLOT_COLORS[:len(cum.columns)]
+    colors = PLOT_COLORS[: len(cum.columns)]
     if len(cum.columns) > len(PLOT_COLORS):
         # If we have more players than colors, cycle through the palette
-        colors = (PLOT_COLORS * ((len(cum.columns) // len(PLOT_COLORS)) + 1))[:len(cum.columns)]
-    
+        colors = (PLOT_COLORS * ((len(cum.columns) // len(PLOT_COLORS)) + 1))[
+            : len(cum.columns)
+        ]
+
     ax = cum.plot(marker="o", figsize=(10, 6), color=colors, linewidth=2.5)
-    plt.title(title, fontsize=16, fontweight='bold', pad=20)
+    plt.title(title, fontsize=16, fontweight="bold", pad=20)
     plt.xlabel("Round", fontsize=12)
     plt.ylabel("Score", fontsize=12)
     plt.grid(True, linestyle=":", alpha=0.3)
-    
+
     # Improve legend
-    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', frameon=False)
-    
+    plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left", frameon=False)
+
     # Set background color
-    ax.set_facecolor('#FAFAFA')
-    plt.gcf().patch.set_facecolor('white')
-    
+    ax.set_facecolor("#FAFAFA")
+    plt.gcf().patch.set_facecolor("white")
+
     plt.tight_layout()
     plt.show()
 
 
 def plot_heatmap(mat: pd.DataFrame, *, title: str | None = None) -> None:
     if sns is None:
-        raise RuntimeError("seaborn is required for heat-map – install via `pip install seaborn`. ")
+        raise RuntimeError(
+            "seaborn is required for heat-map – install via `pip install seaborn`. "
+        )
 
     plt.figure(figsize=(8, 6))
-    
+
     # Create a custom colormap using our palette colors
     from matplotlib.colors import LinearSegmentedColormap
-    colors_for_heatmap = ["#F8F8F8", "#8CF0DC", "#3C3CAF", "#1B2E40"]  # Light to dark progression
+
+    colors_for_heatmap = [
+        "#F8F8F8",
+        "#8CF0DC",
+        "#3C3CAF",
+        "#1B2E40",
+    ]  # Light to dark progression
     custom_cmap = LinearSegmentedColormap.from_list("custom", colors_for_heatmap)
-    
+
     sns.heatmap(
-        mat, 
-        annot=True, 
-        fmt=".1f", 
+        mat,
+        annot=True,
+        fmt=".1f",
         cmap=custom_cmap,
         cbar=True,
         square=True,
         linewidths=0.5,
-        linecolor='white',
-        annot_kws={'fontsize': 10, 'fontweight': 'bold'}
+        linecolor="white",
+        annot_kws={"fontsize": 10, "fontweight": "bold"},
     )
-    
-    plt.title(title or "Head-to-head points", fontsize=16, fontweight='bold', pad=20)
+
+    plt.title(title or "Head-to-head points", fontsize=16, fontweight="bold", pad=20)
     plt.xlabel("Opponent", fontsize=12)
     plt.ylabel("Player", fontsize=12)
-    
+
     # Rotate labels for better readability
-    plt.xticks(rotation=45, ha='right')
+    plt.xticks(rotation=45, ha="right")
     plt.yticks(rotation=0)
-    
+
     plt.tight_layout()
     plt.show()
 
@@ -250,8 +279,8 @@ def plot_heatmap(mat: pd.DataFrame, *, title: str | None = None) -> None:
 # ---------------------------------------------------------------------------
 
 try:
-    import ipywidgets as widgets  # pragma: no cover
-    from IPython.display import display, HTML  # pragma: no cover
+    import ipywidgets as widgets
+    from IPython.display import display, HTML
 
     def _pretty_board(board_state: str) -> str:
         b = list(board_state)
@@ -294,7 +323,8 @@ except ModuleNotFoundError:
 # CLI entry-point
 # ---------------------------------------------------------------------------
 
-def _cli() -> None:  # pragma: no cover – manual invocation only
+
+def _cli() -> None:
     p = argparse.ArgumentParser("results.py – tournament visualisation helpers")
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -303,7 +333,9 @@ def _cli() -> None:  # pragma: no cover – manual invocation only
         "--no-plot", action="store_true", help="Only print the table – no chart"
     )
     sub_scores.add_argument(
-        "--tournament", type=int, help="Tournament ID to analyze (default: all tournaments)"
+        "--tournament",
+        type=int,
+        help="Tournament ID to analyze (default: all tournaments)",
     )
     sub_scores.add_argument(
         "--rounds", type=int, metavar="N", help="Only consider the first N rounds"
@@ -311,7 +343,9 @@ def _cli() -> None:  # pragma: no cover – manual invocation only
 
     sub_hm = sub.add_parser("heatmap", help="Show head-to-head heat-map")
     sub_hm.add_argument(
-        "--tournament", type=int, help="Tournament ID to analyze (default: all tournaments)"
+        "--tournament",
+        type=int,
+        help="Tournament ID to analyze (default: all tournaments)",
     )
 
     sub_first = sub.add_parser(
@@ -319,11 +353,15 @@ def _cli() -> None:  # pragma: no cover – manual invocation only
         help="Show win-rate for the starting player (piece X) versus second player (O)",
     )
     sub_first.add_argument(
-        "--tournament", type=int, help="Tournament ID to analyze (default: all tournaments)"
+        "--tournament",
+        type=int,
+        help="Tournament ID to analyze (default: all tournaments)",
     )
 
     sub_replay = sub.add_parser("replay", help="Textual replay of a match")
-    sub_replay.add_argument("--match", type=int, required=True, help="Match ID to replay")
+    sub_replay.add_argument(
+        "--match", type=int, required=True, help="Match ID to replay"
+    )
 
     sub_list = sub.add_parser("list", help="List available tournaments")
 
@@ -375,16 +413,18 @@ def _cli() -> None:  # pragma: no cover – manual invocation only
 
     elif args.cmd == "list":
         con = sqlite3.connect(_DB_PATH)
-        tournaments = pd.read_sql("SELECT id, created_at, rounds, schedule FROM tournaments ORDER BY id", con)
+        tournaments = pd.read_sql(
+            "SELECT id, created_at, rounds, schedule FROM tournaments ORDER BY id", con
+        )
         if tournaments.empty:
             print("No tournaments found in the database.")
         else:
             print("Available tournaments:")
             print(tournaments.to_string(index=False))
 
-    else:  # pragma: no cover – unreachable
+    else:
         p.error(f"Unexpected command {args.cmd}")
 
 
 if __name__ == "__main__":
-    _cli() 
+    _cli()

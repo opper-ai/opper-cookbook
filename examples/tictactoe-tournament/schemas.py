@@ -9,7 +9,9 @@ class TicTacToeInput(BaseModel):
     board: Tuple[str, ...] = Field(
         description="Nine-item tuple representing the board, index 0-8."
     )
-    player_piece: Literal["X", "O"] = Field(description="The game piece representing the player who is about to play.")
+    player_piece: Literal["X", "O"] = Field(
+        description="The game piece representing the player who is about to play."
+    )
 
     @field_validator("board")
     @classmethod

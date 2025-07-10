@@ -4,6 +4,7 @@ import logging
 from opperai import Opper
 from game import Player, Strategy, Tournament, ScheduleMode
 
+
 def _setup_logging() -> None:
     logging.getLogger().setLevel(logging.WARNING)
 
@@ -15,9 +16,7 @@ def _setup_logging() -> None:
 
     handler = logging.StreamHandler()
     handler.setLevel(logging.INFO)
-    handler.setFormatter(
-        logging.Formatter("%(levelname)s: %(message)s")
-    )
+    handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
     app_logger.addHandler(handler)
 
 
@@ -25,6 +24,7 @@ _setup_logging()
 
 # module-level logger for this file
 logger = logging.getLogger("tictactoe.main")
+
 
 async def main():
     opper = Opper(http_bearer=os.getenv("OPPER_API_KEY"))
@@ -37,7 +37,9 @@ async def main():
         # Player("gpt-4.1-nano-reason-few", "openai/gpt-4.1-nano", Strategy.REASONING, 3, opper),
         # Player("gpt-4.1-nano-reason-many", "openai/gpt-4.1-nano", Strategy.REASONING, 10, opper),
         # Player("gpt-4.1-nano-reason-few", "openai/gpt-4.1-nano", Strategy.REASONING, 3, opper),
-        Player("gpt-4.1-mini-zero", "openai/gpt-4.1-mini", Strategy.ZERO_SHOT, 0, opper),
+        Player(
+            "gpt-4.1-mini-zero", "openai/gpt-4.1-mini", Strategy.ZERO_SHOT, 0, opper
+        ),
         Player("gpt-4.1-mini-few", "openai/gpt-4.1-mini", Strategy.FEW_SHOT, 3, opper),
         # Player("gpt-4.1-mini-many", "openai/gpt-4.1-mini", Strategy.FEW_SHOT, 10, opper),
         # # Player("gpt-4.1-mini-few-2", "openai/gpt-4.1-mini", Strategy.FEW_SHOT, 3, opper),
@@ -51,8 +53,7 @@ async def main():
         # Player("gpt-4.1-reason", "openai/gpt-4.1", Strategy.REASONING, 0, opper),
         # Player("gpt-4.1-reason-few", "openai/gpt-4.1", Strategy.REASONING, 3, opper),
         # Player("gpt-4.1-reason-many", "openai/gpt-4.1", Strategy.REASONING, 10, opper),
-        
-        #Gemini vs Claude
+        # Gemini vs Claude
         # Player("gemini-2.5-flash", "gcp/gemini-2.5-flash", Strategy.ZERO_SHOT, 0, opper),
         # Player("claude-sonnet-4", "anthropic/claude-sonnet-4", Strategy.ZERO_SHOT, 0, opper),
     ]
@@ -70,12 +71,15 @@ async def main():
         players,
         rounds=10,
         semaphore=sem,
-        schedule=schedule if schedule in {m.value for m in ScheduleMode} else ScheduleMode.SIMULTANEOUS,
+        schedule=schedule
+        if schedule in {m.value for m in ScheduleMode}
+        else ScheduleMode.SIMULTANEOUS,
         double_rounds=True,
         # warmup_rounds=20,
     )
     await tourney.run()
     logger.info("Leaderboard: %s", tourney.leaderboard())
+
 
 if __name__ == "__main__":
     asyncio.run(main())

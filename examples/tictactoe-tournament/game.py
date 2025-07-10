@@ -10,15 +10,15 @@ import random
 import datetime as _dt
 from datetime import UTC
 import contextlib
-from scoreboard import LiveScoreboard, ScoreboardEvent 
+from scoreboard import LiveScoreboard, ScoreboardEvent
 
 # random.seed(42)
 
 try:
-    from persistence import SessionLocal, TournamentORM, MatchORM, MoveORM  
+    from persistence import SessionLocal, TournamentORM, MatchORM, MoveORM
 except ModuleNotFoundError:
-    SessionLocal = None  
-    TournamentORM = MatchORM = MoveORM = None  
+    SessionLocal = None
+    TournamentORM = MatchORM = MoveORM = None
 
 try:
     from opperai.errors import BadRequestError
@@ -89,7 +89,6 @@ class Player:
     # Opper automatically creates a dataset per function – we keep its id here
     dataset_id: str | None = None
 
-
     # API helpers
 
     async def add_example(
@@ -155,8 +154,10 @@ class Player:
                 instructions=instructions,
                 input_schema=TicTacToeInput.model_json_schema(),
                 output_schema=out_schema.model_json_schema(),
-                configuration={"invocation.few_shot.count": self.few_shot_count,
-                               "beta.evaluation.enabled": False}, # If you want to disable evaluation
+                configuration={
+                    "invocation.few_shot.count": self.few_shot_count,
+                    "beta.evaluation.enabled": False,
+                },  # If you want to disable evaluation
             )
             self.function_id = fn.id
             self.dataset_id = getattr(fn, "dataset_id", None)
@@ -164,7 +165,9 @@ class Player:
             logger.debug("Error creating function %s: %s", self.name, e)
             raise e
 
-    async def move(self, board: Board, piece: str, *, parent_span_id: str | None = None) -> int:
+    async def move(
+        self, board: Board, piece: str, *, parent_span_id: str | None = None
+    ) -> int:
         assert self.function_id, "call build() first"
         payload = TicTacToeInput(board=board.state, player_piece=piece)
         try:
@@ -220,7 +223,9 @@ class Game:
             piece = "X" if turn % 2 == 0 else "O"  # p1 = "X", p2 = "O"
 
             try:
-                idx = await player.move(self.board, piece, parent_span_id=self.parent_span_id)
+                idx = await player.move(
+                    self.board, piece, parent_span_id=self.parent_span_id
+                )
             except IllegalMove:
                 # offending player's piece determines who made the error
                 return ("ILLEGAL", piece)
@@ -251,8 +256,8 @@ class Tournament:
         players: list[Player],
         rounds: int = 20,
         *,
-        warmup_rounds: int = 0,       # ⬅️  additional warm-up rounds (only these add examples)
-        double_rounds: bool = True,   # play both "home" and "away" legs (X & O)
+        warmup_rounds: int = 0,  # ⬅️  additional warm-up rounds (only these add examples)
+        double_rounds: bool = True,  # play both "home" and "away" legs (X & O)
         semaphore: asyncio.Semaphore | None = None,
         schedule: ScheduleMode | str = ScheduleMode.SIMULTANEOUS,
         persist: bool = True,
@@ -314,8 +319,6 @@ class Tournament:
         # Event queue for scoreboard communication
         self._scoreboard_queue: asyncio.Queue[ScoreboardEvent] | None = None
 
-
-
     async def build_functions(self):
         await asyncio.gather(*(p.build() for p in self.players))
 
@@ -331,7 +334,9 @@ class Tournament:
                 session.commit()
                 self._tournament_id = t.id
 
-        logger.info(f"Running tournament with id {self._tournament_id} and {self.rounds} rounds")
+        logger.info(
+            f"Running tournament with id {self._tournament_id} and {self.rounds} rounds"
+        )
 
         # ----------------------------------------------------------
         # Start live scoreboard
@@ -340,7 +345,7 @@ class Tournament:
         player_names = [p.name for p in self.players]
         scoreboard = LiveScoreboard(player_names, self._scoreboard_queue)
         scoreboard_task = asyncio.create_task(scoreboard.run())
-        
+
         # Signal tournament start
         await self._send_scoreboard_event("tournament_started", {})
 
@@ -390,13 +395,10 @@ class Tournament:
         else:
             x_player, o_player = p2, p1
 
-
         # Opper tracing – one span per match so the entire game is traceable
 
         match_span = x_player.opper.spans.create(name="tictactoe-match")
         span_id = match_span.id
-
-
 
         # Create the game with the chosen order (first player is X)
         game = Game(x_player, o_player, parent_span_id=span_id)
@@ -405,22 +407,29 @@ class Tournament:
         else:
             async with self._sem:
                 result, piece = await game.play()
-        
-        game_end_time = _dt.datetime.now(_dt.timezone.utc)  # Capture actual match end time
+
+        game_end_time = _dt.datetime.now(
+            _dt.timezone.utc
+        )  # Capture actual match end time
 
         if result == "WIN":
             winner = x_player if piece == "X" else o_player
-            loser  = o_player if winner is x_player else x_player  # new → identify loser explicitly
+            loser = (
+                o_player if winner is x_player else x_player
+            )  # new → identify loser explicitly
             self.scores[winner.name] += 1.0
-            self.scores[loser.name]  -= 1.0  # new → loser loses one point
+            self.scores[loser.name] -= 1.0  # new → loser loses one point
 
             # Send scoreboard event
-            await self._send_scoreboard_event("match_completed", {
-                "result": "WIN",
-                "winner": winner.name,
-                "loser": loser.name,
-                "players": [x_player.name, o_player.name]
-            })
+            await self._send_scoreboard_event(
+                "match_completed",
+                {
+                    "result": "WIN",
+                    "winner": winner.name,
+                    "loser": loser.name,
+                    "players": [x_player.name, o_player.name],
+                },
+            )
 
             # Add winning side's moves as few-shot examples **only during warm-up**
             if round_nr < self._warmup_rounds:
@@ -428,10 +437,10 @@ class Tournament:
 
         elif result == "TIE":
             # zero-sum scoring: 0 points for a tie – no score change
-            await self._send_scoreboard_event("match_completed", {
-                "result": "TIE",
-                "players": [x_player.name, o_player.name]
-            })
+            await self._send_scoreboard_event(
+                "match_completed",
+                {"result": "TIE", "players": [x_player.name, o_player.name]},
+            )
 
         elif result == "ILLEGAL":
             offender = x_player if piece == "X" else o_player
@@ -440,12 +449,15 @@ class Tournament:
             self.scores[other.name] += 1.0  # adjusted: full point to opponent
 
             # Send scoreboard event
-            await self._send_scoreboard_event("match_completed", {
-                "result": "ILLEGAL",
-                "offender": offender.name,
-                "winner": other.name,
-                "players": [x_player.name, o_player.name]
-            })
+            await self._send_scoreboard_event(
+                "match_completed",
+                {
+                    "result": "ILLEGAL",
+                    "offender": offender.name,
+                    "winner": other.name,
+                    "players": [x_player.name, o_player.name],
+                },
+            )
 
         # Persist match + moves if enabled and SQLAlchemy is available
         if self._persist:
@@ -459,7 +471,9 @@ class Tournament:
             ]
 
         history_blocks: list[str] = []
-        for mv_nr, (board_after, idx_played, piece_played) in enumerate(game.history, start=1):
+        for mv_nr, (board_after, idx_played, piece_played) in enumerate(
+            game.history, start=1
+        ):
             header = f"Move {mv_nr} | Player: {piece_played} | Index: {idx_played}"
             body = "\n".join(" " * 4 + ln for ln in _board_to_lines(board_after.state))
             history_blocks.append(f"{header}\n{body}")
@@ -488,16 +502,16 @@ class Tournament:
             # Record metric - winner
             # decide winner metric value
             if result == "WIN":
-                winner_value = 0 if piece == "X" else 1          # X wins → 0, O wins → 1
+                winner_value = 0 if piece == "X" else 1  # X wins → 0, O wins → 1
                 comment = f"Winner: {x_player.name if piece == 'X' else o_player.name}"
             elif result == "TIE":
                 winner_value = 0.5
                 comment = "Tie"
             elif result == "ILLEGAL":
                 # piece == offender; winner is the *other* side
-                winner_value = 1 if piece == "X" else 0          # offender X → O wins → 1
+                winner_value = 1 if piece == "X" else 0  # offender X → O wins → 1
                 offender = x_player if piece == "X" else o_player
-                other     = o_player if offender is x_player else x_player
+                other = o_player if offender is x_player else x_player
                 comment = f"Illegal move by {offender.name}; {other.name} awarded win"
             else:  # shouldn't happen, but stay safe
                 winner_value = None
@@ -507,15 +521,13 @@ class Tournament:
                 x_player.opper.span_metrics.create_metric(
                     span_id=span_id,
                     dimension="winner",
-                    value=winner_value,   # 0 = P1(X), 1 = P2(O), 0.5 = tie
+                    value=winner_value,  # 0 = P1(X), 1 = P2(O), 0.5 = tie
                     comment=comment,
                 )
 
         except Exception as e:
             # Don't fail the whole tournament if the Opper call fails
             logger.warning("Could not finalise span %s: %s", span_id, e)
-
-
 
     def _save_match(
         self,
