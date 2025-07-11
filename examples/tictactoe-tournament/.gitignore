@@ -16,3 +16,5 @@ wheels/
 tictactoe.db
 
 .DS_Store
+
+/results

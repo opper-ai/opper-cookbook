@@ -1,4 +1,5 @@
 # Tic-Tac-Toe LLM Tournament
+>Note: code for the Tic Tac Toe opper demo is in [video-code.py](./video-code.py) This whole example is a much more exhaustive implementation of that video.
 
 Ever wondered **how much "thinking" or a couple of prime examples really help a LLM**?  A game of Tic-Tac-Toe is the perfect microscope: small state-space, quick feedback, and a well-known optimal solution (a tie!).
 
