@@ -195,6 +195,9 @@ PLOT_COLORS = [
     "#FFD7D7",  # Translucent Silk
     "#D3D3D3",  # Light Grey
     "#8CECF2",  # Cotton Candy (light blue-green)
+    "#BDB2FF",  # Lavender Bloom      ← new: pastel lavender that bridges blue and purple
+    "#FFC9A9",  
+
 ]
 
 

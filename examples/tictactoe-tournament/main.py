@@ -31,7 +31,12 @@ async def main():
 
     players = [
         Player("gpt-4.1-mini-few", "openai/gpt-4.1-mini", Strategy.FEW_SHOT, 3, opper),
-        Player("claude-sonnet-4", "anthropic/claude-sonnet-4", Strategy.ZERO_SHOT, 0, opper),
+        Player("gpt-4.1-mini-zero", "openai/gpt-4.1-mini", Strategy.ZERO_SHOT, 0, opper),
+        Player("claude-sonnet-4-zero", "anthropic/claude-sonnet-4", Strategy.ZERO_SHOT, 0, opper),
+        Player("gpt-4.1-zero", "openai/gpt-4.1", Strategy.ZERO_SHOT, 0, opper),
+        Player("grok-4-zero", "xai/grok-4", Strategy.ZERO_SHOT, 0, opper),
+        Player("gemini-2.5-pro-zero", "gcp/gemini-2.5-pro", Strategy.ZERO_SHOT, 0, opper),
+        Player("o3-zero", "openai/o3", Strategy.ZERO_SHOT, 0, opper),
     ]
 
     # Global concurrency limit (can be overridden via env var)
@@ -45,7 +50,7 @@ async def main():
 
     tourney = Tournament(
         players,
-        rounds=50,
+        rounds=15,
         semaphore=sem,
         schedule=(
             schedule
