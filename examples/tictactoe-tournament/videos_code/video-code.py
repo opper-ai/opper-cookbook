@@ -31,7 +31,6 @@ class TicTacToeOutput(BaseModel):
     move: MoveIndex = Field(description="The index of where to place the marker")
 
 def create_player(model:str):
-
     player_name = f"play-tic-tac-toe-{model.split('/')[-1]}" # Remove the provider from the model name
     player = opper.functions.create(
         name=player_name,

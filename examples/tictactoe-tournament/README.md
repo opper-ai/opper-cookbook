@@ -1,5 +1,19 @@
 # Tic-Tac-Toe LLM Tournament
->Note: code for the Tic Tac Toe opper demo is in [video-code.py](./video-code.py) This whole example is a much more exhaustive implementation of that video.
+>Note: code for the Tic Tac Toe opper demo is in [videos_code](./videos_code) This whole repo is a much more exhaustive implementation of the videos
+
+## Table of Contents
+- [Intro](#intro)
+- [Few Shot Results](#0-few-shot-results)
+- [Core Idea](#1--core-idea)
+- [Running a Tournament](#2--running-a-tournament)
+- [Why Opper Excels](#3-why-opper-excels)
+- [CLI Analysis](#4--cli-analysis)
+- [Editing Players](#5--editing-players)
+- [Optional Plotting Dependencies](#6--optional-plotting-deps)
+
+---
+
+# Intro
 
 Ever wondered **how much "thinking" or a couple of prime examples really help a LLM**?  A game of Tic-Tac-Toe is the perfect microscope: small state-space, quick feedback, and a well-known optimal solution (a tie!).
 
@@ -11,6 +25,11 @@ Why is it interesting?
 * Even in a solved game, imperfect play reveals biases like **first-move advantage**; we can measure those precisely.
 
 Opper makes the experiment friction-less: swap a model by editing one string, change the number of examples with just a variable, and all matches are 
+
+---
+## 0. Few Shot results
+**We made GPT-4.1-mini consistently beat its big brother at Tic-Tac-Toe — using just in-context learning!**
+![Results](./assets/results_few_shot.png)
 
 ---
 ## 1.  Core idea
@@ -30,7 +49,7 @@ Disable with `double_rounds=False` when constructing `Tournament`.
 
 ---
 ## 2.  Running a tournament
-Install
+With [uv](https://docs.astral.sh/uv/#highlights)
 ```
 uv sync
 ```
