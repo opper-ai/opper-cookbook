@@ -1,3 +1,42 @@
 venv
 .ipynb_checkpoints
 
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Environments
+.env
+.venv
+env/
+ENV/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints
+
+# Logs
+*.log
