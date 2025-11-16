@@ -6,7 +6,7 @@ An interactive CLI tool for bootstrapping training examples for AI tasks using O
 
 This tool helps you quickly create quality training examples by:
 
-1. **Generating synthetic examples** from your input cases
+1. **Generating synthetic examples** from your input and output schemas
 2. **Collecting your feedback** with ratings (1-5) and comments
 3. **Refining examples** based on your feedback using AI
 4. **Saving perfect examples (5/5)** automatically
@@ -21,6 +21,11 @@ This tool helps you quickly create quality training examples by:
   - Run the engine
 
 ## Quick Start
+
+You can use the engine in **two ways**:
+
+- **Manual cases**: you provide `INPUT_CASES` and the engine samples from them.
+- **Synthetic generation**: the engine auto-generates inputs from your schemas when `auto_generate_inputs=True`.
 
 1. Create your invocation script (copy `bootstrap_changelog.py` as a template):
 
@@ -41,7 +46,8 @@ def make_call(opper, input_data, examples=None):
         examples=examples,
     )
 
-# Define your input cases
+## Option A: manually defined input cases
+
 INPUT_CASES = [
     {"field": "value1"},
     {"field": "value2"},
@@ -55,17 +61,30 @@ def convert_input(raw_input) -> dict:
 def format_output(output: dict) -> str:
     return str(output)
 
-# Run
+## Option A: use your own `INPUT_CASES`
+
 engine = BootstrapEngine(
     make_call_func=make_call,
     synthetic_inputs=INPUT_CASES,
-    ...,
-    function_name="your_task"  # Optional: explicitly set function name
+    input_schema=YourInputSchema,
+    output_schema=YourOutputSchema,
+    function_name="your_task",  # Optional: explicitly set function name
+)
+engine.run(opper)
+
+## Option B: let the engine auto-generate synthetic inputs
+
+engine = BootstrapEngine(
+    make_call_func=make_call,
+    input_schema=YourInputSchema,
+    output_schema=YourOutputSchema,
+    auto_generate_inputs=True,  # Enable on-demand synthetic input generation from schemas
+    function_name="your_task",  # Optional
 )
 engine.run(opper)
 ```
 
-**Note:** The function must exist in Opper (created via `opper.functions.create()` or automatically via the first `opper.call()`). Examples rated 5/5 will be automatically saved to the function's dataset.
+**Note:** You don't need to create the function manually – it will be created automatically on the first `opper.call()`. Once the function (and its dataset) exist, examples rated 5/5 will be automatically saved to that function's dataset.
 
 2. Set your API key:
 ```bash
