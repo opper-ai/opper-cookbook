@@ -1,0 +1,11 @@
+[project]
+name = "bootstrap-examples"
+version = "0.1.0"
+description = "Interactive CLI for bootstrapping training examples"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "opperai>=1.1.0",
+    "pydantic>=2.0.0",
+]
+
