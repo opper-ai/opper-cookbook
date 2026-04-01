@@ -45,5 +45,7 @@ htmlcov/
 # Logs
 *.log
 
-# Generated media
+# Generated output
 examples/chatbot-openresponses/public/media/
+**/output/
+uv.lock
