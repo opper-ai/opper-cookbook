@@ -8,6 +8,7 @@ A chatbot that uses the Opper [OpenResponses](https://docs.opper.ai) endpoint di
 Browser  ──POST /api/chat──>  Express server  ──fetch()──>  /v3/compat/openresponses
                                     │
                                     ├── Tool call? Execute via Opper SDK
+                                    │   ├── opper.beta.web.search()
                                     │   ├── opper.generateImage()
                                     │   └── opper.textToSpeech()
                                     │
@@ -20,9 +21,12 @@ The server implements a simple **agentic loop**: it calls the OpenResponses endp
 
 - **OpenResponses endpoint** — raw `fetch()` to `/v3/compat/openresponses`, typed request/response
 - **Agentic tool loop** — function calling with `function_call` / `function_call_output` items
+- **Web search** — `opper.beta.web.search()` for real-time information
 - **Image generation** — `opper.generateImage()` via SDK, rendered inline in chat
 - **Text-to-speech** — `opper.textToSpeech()` via SDK, playable audio in chat
-- **Tracing** — `X-Opper-Name` header for observability
+- **Session tracing** — `X-Opper-Parent-Span-Id` header groups all turns under one trace
+- **Conversation history** — localStorage-persisted sidebar with multiple conversations
+- **Light/dark theme** — auto-detects system preference
 
 ## Prerequisites
 
@@ -40,6 +44,7 @@ Open [http://localhost:3000](http://localhost:3000) and start chatting.
 
 ## Try these prompts
 
+- "What's the latest news about AI?"
 - "Draw me a cat wearing a tiny hat"
 - "Say hello in French and read it aloud"
 - "Generate an image of a sunset over Tokyo and describe it"

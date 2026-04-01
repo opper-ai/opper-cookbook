@@ -121,6 +121,22 @@ const tools: Tool[] = [
   },
   {
     type: "function",
+    name: "web_search",
+    description:
+      "Search the web for current information. Use this when the user asks about recent events, facts you're unsure about, or anything that benefits from up-to-date information.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "The search query.",
+        },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    type: "function",
     name: "text_to_speech",
     description:
       "Convert text to spoken audio. Use this when the user asks you to read something aloud, speak, or generate audio.",
@@ -186,6 +202,15 @@ async function executeTool(
     };
   }
 
+  if (name === "web_search") {
+    const results = await opper.beta.web.search({ query: args.query as string });
+    const formatted = results.results.slice(0, 5).map(
+      (r: { title: string; url: string; snippet: string }) =>
+        `**${r.title}**\n${r.url}\n${r.snippet}`
+    ).join("\n\n");
+    return { result: formatted || "No results found." };
+  }
+
   if (name === "text_to_speech") {
     const speech = await opper.textToSpeech({
       text: args.text as string,
@@ -213,7 +238,9 @@ async function callOpenResponses(
   const body: ORRequest = {
     model: MODEL,
     instructions:
-      "You are a friendly, creative assistant. You can generate images and speak text aloud using your tools. " +
+      "You are a friendly, creative assistant. You can search the web, generate images, and speak text aloud using your tools. " +
+      "Only use web search when the user explicitly asks you to look something up, or when you genuinely don't know the answer and current information is needed. " +
+      "Do not search the web for general knowledge, greetings, or creative tasks — just answer directly. " +
       "When generating images, craft detailed prompts for the best results. " +
       "When using text-to-speech, pick the most relevant text to speak. " +
       "Keep your text responses concise and conversational.",
