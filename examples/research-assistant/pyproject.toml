@@ -1,0 +1,8 @@
+[project]
+name = "research-assistant"
+version = "0.1.0"
+description = "Research assistant showcasing the Opper Python SDK v3"
+requires-python = ">=3.10"
+dependencies = [
+    "opperai[pydantic]>=2.0.0b2",
+]

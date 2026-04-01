@@ -1,0 +1,16 @@
+{
+  "name": "content-analyzer",
+  "version": "0.1.0",
+  "description": "Content analyzer showcasing the Opper TypeScript SDK v3",
+  "type": "module",
+  "scripts": {
+    "start": "tsx main.ts"
+  },
+  "dependencies": {
+    "opperai": "^4.0.0-beta.2",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "tsx": "^4.0.0"
+  }
+}

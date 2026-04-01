@@ -17,6 +17,10 @@ dist/
 build/
 *.egg
 
+# Node
+node_modules/
+package-lock.json
+
 # Environments
 .env
 .venv
@@ -40,3 +44,6 @@ htmlcov/
 
 # Logs
 *.log
+
+# Generated media
+examples/chatbot-openresponses/public/media/
