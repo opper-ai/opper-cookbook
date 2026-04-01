@@ -7,35 +7,78 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
+      darkMode: 'class',
       theme: {
         extend: {
-          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+          fontFamily: { sans: ['"Wix Madefor Display"', 'system-ui', 'sans-serif'] },
         }
       }
     }
+    // Apply dark class based on system preference
+    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      document.documentElement.classList.add('dark');
+    }
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+      document.documentElement.classList.toggle('dark', e.matches);
+    });
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Wix+Madefor+Display:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    /* Custom scrollbar */
+    :root {
+      --bg: oklch(1 0 0);
+      --fg: oklch(0.2938 0.0414 248.11);
+      --card: oklch(1 0 0);
+      --card-fg: oklch(0.145 0 0);
+      --primary: oklch(0.205 0 0);
+      --primary-fg: oklch(0.985 0 0);
+      --secondary: oklch(0.97 0 0);
+      --secondary-fg: oklch(0.205 0 0);
+      --muted: oklch(0.97 0 0);
+      --muted-fg: oklch(0.45 0 0);
+      --accent: oklch(0.98 0 0);
+      --accent-fg: oklch(0.40 0 0);
+      --border: oklch(0.922 0 0);
+      --input: oklch(0.922 0 0);
+      --ring: oklch(0.708 0 0);
+    }
+    .dark {
+      --bg: oklch(0.252 0 102.07);
+      --fg: oklch(0.9881 0 102.07);
+      --card: oklch(0.23 0 0);
+      --card-fg: oklch(0.9881 0 102.07);
+      --primary: oklch(0.9881 0 102.07);
+      --primary-fg: oklch(0.252 0 102.07);
+      --secondary: oklch(0.30 0 0);
+      --secondary-fg: oklch(0.9881 0 102.07);
+      --muted: oklch(0.30 0 0);
+      --muted-fg: oklch(0.72 0 0);
+      --accent: oklch(0.35 0 0);
+      --accent-fg: oklch(0.90 0 0);
+      --border: oklch(0.35 0 0);
+      --input: oklch(0.35 0 0);
+      --ring: oklch(0.556 0 0);
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--fg);
+    }
+
+    /* Scrollbar */
     .chat-messages::-webkit-scrollbar { width: 6px; }
     .chat-messages::-webkit-scrollbar-track { background: transparent; }
-    .chat-messages::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+    .chat-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
     /* Message slide-in */
-    .message-enter {
-      animation: messageIn 0.3s ease-out;
-    }
+    .message-enter { animation: messageIn 0.3s ease-out; }
     @keyframes messageIn {
       from { opacity: 0; transform: translateY(8px); }
       to { opacity: 1; transform: translateY(0); }
     }
 
     /* Thinking dots */
-    .thinking-dots span {
-      animation: dot 1.4s ease-in-out infinite;
-      opacity: 0.2;
-    }
+    .thinking-dots span { animation: dot 1.4s ease-in-out infinite; opacity: 0.2; }
     .thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
     .thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
     @keyframes dot {
@@ -44,27 +87,43 @@
     }
 
     /* Media glow-in */
-    .media-card {
-      animation: glowIn 0.5s ease-out;
-    }
+    .media-card { animation: glowIn 0.5s ease-out; }
     @keyframes glowIn {
-      from { opacity: 0; box-shadow: 0 0 20px rgba(99, 102, 241, 0.4); }
+      from { opacity: 0; box-shadow: 0 0 16px var(--ring); }
       to { opacity: 1; box-shadow: none; }
     }
+
+    /* Theme-aware utility classes via CSS vars */
+    .bg-page { background: var(--bg); }
+    .text-page { color: var(--fg); }
+    .bg-card { background: var(--card); }
+    .text-card { color: var(--card-fg); }
+    .bg-secondary { background: var(--secondary); }
+    .text-secondary { color: var(--secondary-fg); }
+    .bg-muted { background: var(--muted); }
+    .text-muted { color: var(--muted-fg); }
+    .bg-accent { background: var(--accent); }
+    .text-accent { color: var(--accent-fg); }
+    .bg-primary { background: var(--primary); }
+    .text-primary { color: var(--primary); }
+    .text-primary-fg { color: var(--primary-fg); }
+    .border-theme { border-color: var(--border); }
+    .bg-input { background: var(--input); }
+    .ring-theme { --tw-ring-color: var(--ring); }
   </style>
 </head>
-<body class="h-screen flex flex-col bg-[#0a0a0a] text-gray-50 font-sans">
+<body class="h-screen flex flex-col font-sans">
 
   <!-- Header -->
-  <header class="border-b border-white/10 px-6 py-4 flex items-center gap-3 flex-shrink-0">
-    <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-      <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+  <header class="border-b border-theme px-6 py-4 flex items-center gap-3 flex-shrink-0">
+    <div class="w-8 h-8 rounded-[10px] bg-primary flex items-center justify-center">
+      <svg class="w-4 h-4 text-primary-fg" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color: var(--primary-fg)">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
       </svg>
     </div>
     <div>
-      <h1 class="text-sm font-semibold text-white">Opper Chatbot</h1>
-      <p class="text-xs text-white/40">OpenResponses API &middot; Image Generation &middot; Text-to-Speech</p>
+      <h1 class="text-sm font-semibold text-page">Opper Chatbot</h1>
+      <p class="text-xs text-muted">OpenResponses API &middot; Image Generation &middot; Text-to-Speech</p>
     </div>
   </header>
 
@@ -74,14 +133,14 @@
 
       <!-- Welcome message -->
       <div class="message-enter flex gap-3">
-        <div class="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex-shrink-0 mt-0.5 flex items-center justify-center">
-          <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div class="w-7 h-7 rounded-full bg-primary flex-shrink-0 mt-0.5 flex items-center justify-center">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color: var(--primary-fg)">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
           </svg>
         </div>
-        <div class="bg-white/5 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[85%]">
-          <p class="text-sm text-white/80 leading-relaxed">
-            Hey! I'm a chatbot powered by Opper's <span class="text-indigo-400 font-medium">OpenResponses</span> endpoint. I can chat, generate images, and read text aloud. Try asking me to draw something or speak a sentence!
+        <div class="bg-secondary rounded-[10px] rounded-tl-sm px-4 py-3 max-w-[85%]">
+          <p class="text-sm text-accent leading-relaxed">
+            Hey! I'm a chatbot powered by Opper's <strong class="text-page font-semibold">OpenResponses</strong> endpoint. I can chat, generate images, and read text aloud. Try asking me to draw something or speak a sentence!
           </p>
         </div>
       </div>
@@ -90,19 +149,20 @@
   </main>
 
   <!-- Input area -->
-  <footer class="border-t border-white/10 px-4 py-4 flex-shrink-0">
+  <footer class="border-t border-theme px-4 py-4 flex-shrink-0">
     <form id="chatForm" class="max-w-2xl mx-auto flex gap-3 items-end">
       <textarea
         id="input"
         placeholder="Ask me to generate an image or speak something..."
         rows="1"
-        class="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/30 resize-none focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/25 transition-colors"
-        style="max-height: 120px;"
+        class="flex-1 bg-input border border-theme rounded-[10px] px-4 py-3 text-sm text-page resize-none focus:outline-none focus:ring-2 ring-theme transition-colors"
+        style="max-height: 120px; background: var(--input); border-color: var(--border); color: var(--fg);"
       ></textarea>
       <button
         type="submit"
         id="sendBtn"
-        class="bg-indigo-600 hover:bg-indigo-500 disabled:bg-white/10 disabled:text-white/20 text-white rounded-xl px-4 py-3 text-sm font-medium transition-colors flex-shrink-0"
+        class="bg-primary text-primary-fg rounded-[10px] px-4 py-3 text-sm font-medium transition-opacity hover:opacity-80 disabled:opacity-30 flex-shrink-0"
+        style="background: var(--primary); color: var(--primary-fg);"
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7"/>
@@ -121,11 +181,10 @@
     const history = [];
     let sessionId = null;
 
-    // Create a tracing session on load — all turns will nest under it
     fetch("/api/session", { method: "POST" })
       .then(r => r.json())
       .then(data => { sessionId = data.sessionId; })
-      .catch(() => {}); // tracing is optional, chat still works
+      .catch(() => {});
 
     function scrollToBottom() {
       requestAnimationFrame(() => { chatArea.scrollTop = chatArea.scrollHeight; });
@@ -141,11 +200,10 @@
       return escapeHtml(text)
         .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
         .replace(/\*(.+?)\*/g, "<em>$1</em>")
-        .replace(/`(.+?)`/g, '<code class="bg-white/10 px-1.5 py-0.5 rounded text-xs font-mono">$1</code>')
+        .replace(/`(.+?)`/g, '<code style="background:var(--muted);padding:2px 6px;border-radius:4px;font-size:0.75rem;font-family:monospace;">$1</code>')
         .replace(/\n/g, "<br>");
     }
 
-    // Auto-resize textarea
     input.addEventListener("input", () => {
       input.style.height = "auto";
       input.style.height = Math.min(input.scrollHeight, 120) + "px";
@@ -155,8 +213,8 @@
       const el = document.createElement("div");
       el.className = "message-enter flex gap-3 justify-end";
       el.innerHTML = `
-        <div class="bg-indigo-600/20 border border-indigo-500/20 rounded-2xl rounded-tr-sm px-4 py-3 max-w-[85%]">
-          <p class="text-sm text-white/90 leading-relaxed">${escapeHtml(text)}</p>
+        <div style="background:var(--accent);color:var(--accent-fg);" class="rounded-[10px] rounded-tr-sm px-4 py-3 max-w-[85%]">
+          <p class="text-sm leading-relaxed">${escapeHtml(text)}</p>
         </div>
       `;
       messagesEl.appendChild(el);
@@ -168,13 +226,13 @@
       el.id = "thinking";
       el.className = "message-enter flex gap-3";
       el.innerHTML = `
-        <div class="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex-shrink-0 mt-0.5 flex items-center justify-center">
-          <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div class="w-7 h-7 rounded-full flex-shrink-0 mt-0.5 flex items-center justify-center" style="background:var(--primary)">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color:var(--primary-fg)">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
           </svg>
         </div>
-        <div class="bg-white/5 rounded-2xl rounded-tl-sm px-4 py-3">
-          <div class="thinking-dots text-sm text-white/40">
+        <div class="rounded-[10px] rounded-tl-sm px-4 py-3" style="background:var(--secondary)">
+          <div class="thinking-dots text-sm" style="color:var(--muted-fg)">
             <span>&#9679;</span> <span>&#9679;</span> <span>&#9679;</span>
           </div>
         </div>
@@ -196,15 +254,15 @@
       for (const m of mediaItems || []) {
         if (m.type === "image") {
           mediaHtml += `
-            <div class="media-card mt-3 rounded-xl overflow-hidden border border-white/10 relative group cursor-pointer" onclick="window.open('${m.url}', '_blank')">
-              <img src="${m.url}" alt="Generated image" class="w-full max-w-md" loading="lazy" />
+            <div class="media-card mt-3 rounded-[10px] overflow-hidden relative group cursor-pointer" style="border:1px solid var(--border)" onclick="window.open('${m.url}', '_blank')">
+              <img src="${m.url}" alt="Generated image" class="w-full" loading="lazy" />
               <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
                 <div class="opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
-                  <a href="${m.url}" download class="bg-white/90 hover:bg-white text-gray-900 rounded-lg px-3 py-1.5 text-xs font-medium flex items-center gap-1.5" onclick="event.stopPropagation()">
+                  <a href="${m.url}" download class="bg-white/90 hover:bg-white rounded-lg px-3 py-1.5 text-xs font-medium flex items-center gap-1.5" style="color:var(--card-fg)" onclick="event.stopPropagation()">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
                     Download
                   </a>
-                  <span class="bg-white/90 text-gray-900 rounded-lg px-3 py-1.5 text-xs font-medium flex items-center gap-1.5">
+                  <span class="bg-white/90 rounded-lg px-3 py-1.5 text-xs font-medium flex items-center gap-1.5" style="color:var(--card-fg)">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
                     Open
                   </span>
@@ -214,25 +272,25 @@
           `;
         } else if (m.type === "audio") {
           mediaHtml += `
-            <div class="media-card mt-3 flex items-center gap-3 bg-white/5 rounded-xl px-4 py-3 border border-white/10">
-              <svg class="w-5 h-5 text-indigo-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="media-card mt-3 flex items-center gap-3 rounded-[10px] px-4 py-3" style="background:var(--secondary);border:1px solid var(--border)">
+              <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color:var(--muted-fg)">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M9 9v6l-3-3H3v-6h3l3-3z"/>
               </svg>
-              <audio controls src="${m.url}" class="flex-1 h-8" style="filter: invert(1) hue-rotate(180deg) brightness(0.8);"></audio>
+              <audio controls src="${m.url}" class="flex-1 h-8"></audio>
             </div>
           `;
         }
       }
 
       el.innerHTML = `
-        <div class="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex-shrink-0 mt-0.5 flex items-center justify-center">
-          <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div class="w-7 h-7 rounded-full flex-shrink-0 mt-0.5 flex items-center justify-center" style="background:var(--primary)">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color:var(--primary-fg)">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
           </svg>
         </div>
         <div class="max-w-[85%]">
-          <div class="bg-white/5 rounded-2xl rounded-tl-sm px-4 py-3">
-            <p class="text-sm text-white/80 leading-relaxed">${renderMarkdown(text)}</p>
+          <div class="rounded-[10px] rounded-tl-sm px-4 py-3" style="background:var(--secondary)">
+            <p class="text-sm leading-relaxed" style="color:var(--accent-fg)">${renderMarkdown(text)}</p>
           </div>
           ${mediaHtml}
         </div>
