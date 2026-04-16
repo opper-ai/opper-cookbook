@@ -1,0 +1,88 @@
+#!/usr/bin/env node
+
+/**
+ * Login with Opper — CLI Example
+ *
+ * Uses the @opperai/login SDK with the Device Authorization Flow (RFC 8628)
+ * to authenticate a user from the terminal and get an API key for inference.
+ *
+ * Usage:
+ *   CLIENT_ID="your_client_id" CLIENT_SECRET="your_secret" node cli.js
+ */
+
+import { execFile } from "child_process";
+import { OpperLogin } from "@opperai/login";
+
+const CLIENT_ID = process.env.CLIENT_ID || "PASTE_YOUR_CLIENT_ID";
+const CLIENT_SECRET = process.env.CLIENT_SECRET || "PASTE_YOUR_CLIENT_SECRET";
+const OPPER_URL = process.env.OPPER_URL || "https://api.opper.ai";
+
+function openBrowser(url) {
+    const cmd =
+        process.platform === "darwin"
+            ? "open"
+            : process.platform === "win32"
+              ? "start"
+              : "xdg-open";
+    execFile(cmd, [url], () => {});
+}
+
+async function main() {
+    console.log("🔐 Login with Opper\n");
+
+    const opper = new OpperLogin({
+        clientId: CLIENT_ID,
+        redirectUri: "",
+        opperUrl: OPPER_URL,
+    });
+
+    // Step 1: Start device authorization
+    const device = await opper.startDeviceAuth(CLIENT_SECRET);
+
+    // Step 2: Show code and open browser
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    console.log(`  Open:  ${device.verificationUri}`);
+    console.log(`  Code:  ${device.userCode}`);
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    console.log("\nWaiting for authorization...");
+
+    openBrowser(device.verificationUri);
+
+    // Step 3: Poll until user approves (SDK handles the polling loop)
+    try {
+        const { apiKey, user } = await opper.pollDeviceToken(device);
+
+        console.log("\n\n✅ Authorized!\n");
+        console.log(`  User:     ${user.name || user.email}`);
+        console.log(`  API Key:  ${apiKey}`);
+
+        // Test inference
+        console.log("\n--- Testing inference ---\n");
+        const callRes = await fetch(`${OPPER_URL}/v2/call`, {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${apiKey}`,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                name: "cli-example",
+                instructions: "Answer concisely.",
+                input: "What is 2+2?",
+            }),
+        });
+        const callData = await callRes.json();
+        console.log("Response:", callData.message || JSON.stringify(callData));
+    } catch (err) {
+        if (err.message === "User denied access") {
+            console.log("\n\n❌ Access denied by user.");
+        } else {
+            console.error("\nError:", err.message);
+        }
+        process.exit(1);
+    }
+}
+
+main().catch((err) => {
+    console.error("Error:", err.message);
+    process.exit(1);
+});
