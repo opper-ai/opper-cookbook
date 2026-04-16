@@ -1,20 +1,20 @@
 #!/usr/bin/env node
 
 /**
- * Login with Opper — CLI Example
+ * Login with Opper — CLI Example (Public Client)
  *
  * Uses the @opperai/login SDK with the Device Authorization Flow (RFC 8628)
- * to authenticate a user from the terminal and get an API key for inference.
+ * to authenticate a user from the terminal. No client secret needed — this
+ * is a public client, safe to distribute in CLI binaries.
  *
  * Usage:
- *   CLIENT_ID="your_client_id" CLIENT_SECRET="your_secret" node cli.js
+ *   CLIENT_ID="your_client_id" node cli.js
  */
 
 import { execFile } from "child_process";
 import { OpperLogin } from "@opperai/login";
 
 const CLIENT_ID = process.env.CLIENT_ID || "PASTE_YOUR_CLIENT_ID";
-const CLIENT_SECRET = process.env.CLIENT_SECRET || "PASTE_YOUR_CLIENT_SECRET";
 const OPPER_URL = process.env.OPPER_URL || "https://api.opper.ai";
 
 function openBrowser(url) {
@@ -36,8 +36,8 @@ async function main() {
         opperUrl: OPPER_URL,
     });
 
-    // Step 1: Start device authorization
-    const device = await opper.startDeviceAuth(CLIENT_SECRET);
+    // Step 1: Start device authorization (no secret needed for public clients)
+    const device = await opper.startDeviceAuth();
 
     // Step 2: Show code and open browser
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");

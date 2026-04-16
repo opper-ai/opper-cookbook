@@ -25,15 +25,15 @@ A command-line app that integrates **Login with Opper** using the Device Authori
 ## Run
 
 ```bash
-CLIENT_ID="your_client_id" CLIENT_SECRET="your_client_secret" node cli.js
+npm install
+CLIENT_ID="your_client_id" node cli.js
 ```
 
-No `npm install` needed — zero dependencies.
+No client secret needed — register the OAuth app as a **public client** in Opper settings.
 
 ## Environment variables
 
 | Variable | Description |
 |----------|-------------|
-| `CLIENT_ID` | OAuth app client ID from Opper |
-| `CLIENT_SECRET` | OAuth app client secret (shown once on creation) |
+| `CLIENT_ID` | OAuth app client ID from Opper (public client) |
 | `OPPER_URL` | Opper API URL (default: `https://api.opper.ai`) |
