@@ -6,6 +6,6 @@
         "start": "node cli.js"
     },
     "dependencies": {
-        "@opperai/login": "^0.1.0"
+        "@opperai/login": "^0.3.0"
     }
 }

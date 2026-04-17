@@ -32,21 +32,24 @@ async function main() {
 
     const opper = new OpperLogin({
         clientId: CLIENT_ID,
-        redirectUri: "",
         opperUrl: OPPER_URL,
     });
 
     // Step 1: Start device authorization (no secret needed for public clients)
     const device = await opper.startDeviceAuth();
 
-    // Step 2: Show code and open browser
+    // Step 2: Show code and open browser. Prefer verification_uri_complete (RFC 8628)
+    // when the server provides it — the user code is prefilled so the user only
+    // has to click Approve. Always print the userCode too, in case the browser
+    // opens on another device or the prefill fails.
+    const openUrl = device.verificationUriComplete ?? device.verificationUri;
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    console.log(`  Open:  ${device.verificationUri}`);
+    console.log(`  Open:  ${openUrl}`);
     console.log(`  Code:  ${device.userCode}`);
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     console.log("\nWaiting for authorization...");
 
-    openBrowser(device.verificationUri);
+    openBrowser(openUrl);
 
     // Step 3: Poll until user approves (SDK handles the polling loop)
     try {

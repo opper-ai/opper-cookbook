@@ -11,6 +11,7 @@ const REDIRECT_URI = `http://localhost:${PORT}/callback`;
 
 const opper = new OpperLogin({
     clientId: CLIENT_ID,
+    clientSecret: CLIENT_SECRET,
     redirectUri: REDIRECT_URI,
     opperUrl: OPPER_URL,
 });
@@ -62,7 +63,7 @@ app.get("/callback", async (req, res) => {
 
     // Exchange code for API key using the SDK
     try {
-        const { apiKey, user } = await opper.exchangeCode(code, CLIENT_SECRET);
+        const { apiKey, user } = await opper.exchangeCode(code);
         const userName = escapeHtml(user?.name || user?.email || "unknown");
         const portalUrl = opper.getPortalUrl();
 
