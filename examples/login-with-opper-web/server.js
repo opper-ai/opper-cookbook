@@ -35,7 +35,7 @@ app.get("/", (req, res) => {
     </head>
     <body>
       <h1>My AI App</h1>
-      <p>This app uses <strong>Login with Opper</strong> so you can use AI features with your own Opper account.</p>
+      <p>This app uses <strong>Login with Opper</strong> — AI calls are paid from your Opper Wallet.</p>
       <br>
       <a href="${authorizeUrl}" class="opper-login-button">
         Login with Opper
@@ -121,7 +121,7 @@ app.get("/callback", async (req, res) => {
 
         <div style="margin-top: 40px; display: flex; gap: 12px; align-items: center;">
           <a href="${portalUrl}" target="_blank" rel="noopener noreferrer" class="opper-login-button opper-login-button--dark">
-            Manage Opper Account
+            Open Opper Wallet
           </a>
           <a href="/" style="color: #666; font-size: 14px;">Back to home</a>
         </div>

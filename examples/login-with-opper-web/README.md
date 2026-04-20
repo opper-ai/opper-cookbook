@@ -1,12 +1,12 @@
 # Login with Opper — Web App
 
-A minimal Express app that integrates **Login with Opper** using the OAuth 2.0 Authorization Code flow. Users log in with their Opper account, and the app gets an API key to make AI inference calls billed to the user.
+A minimal Express app that integrates **Login with Opper** using the OAuth 2.0 Authorization Code flow. Users sign in with Opper, the app gets an API key, and AI calls are paid from the user's Opper Wallet.
 
 ## Features demonstrated
 
-- **`@opperai/login` SDK** — `OpperLogin` class for token exchange, `getPortalUrl()` for account management
+- **`@opperai/login` SDK** — `OpperLogin` class for token exchange, `getPortalUrl()` linking to the user's Opper Wallet
 - **OAuth 2.0 Authorization Code flow** — redirect-based login
-- **Branded buttons** — SDK's CSS classes for login + manage account buttons
+- **Branded buttons** — SDK's CSS classes for login + wallet buttons
 - **Inference** — calling `/v2/call` with the user's API key
 
 ## How it works
