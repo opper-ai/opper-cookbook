@@ -120,7 +120,7 @@ app.get("/callback", async (req, res) => {
         </script>
 
         <div style="margin-top: 40px; display: flex; gap: 12px; align-items: center;">
-          <a href="${portalUrl}" target="_blank" rel="noopener noreferrer" class="opper-login-button opper-login-button--dark">
+          <a href="${portalUrl}" target="_blank" rel="noopener noreferrer" class="opper-login-button">
             Open Opper Wallet
           </a>
           <a href="/" style="color: #666; font-size: 14px;">Back to home</a>
