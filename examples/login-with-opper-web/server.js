@@ -96,21 +96,77 @@ app.get("/callback", async (req, res) => {
           <button type="submit" class="send-btn">Send to Opper</button>
         </form>
         <pre id="chat-result"></pre>
+        <div id="connection-status"></div>
 
         <script>
           const apiKey = ${JSON.stringify(apiKey)};
           const opperUrl = ${JSON.stringify(OPPER_URL)};
+          const portalUrl = ${JSON.stringify(portalUrl)};
+
+          // Two states a partner app should always handle on calls to /v2/call:
+          //   401 — API key invalid. The user disconnected this app from their
+          //         Opper Wallet (or Opper revoked the key for another reason).
+          //         They must reconnect via /oauth/authorize before AI calls
+          //         resume.
+          //   402 — Payment required. Opper balance is depleted. The user tops
+          //         up at their Wallet portal and the existing key keeps working.
+          // Render a clear next-step CTA for each instead of an opaque error.
+          function renderConnectionState(status) {
+            const el = document.getElementById("connection-status");
+            el.replaceChildren();
+            if (status !== 401 && status !== 402) return;
+
+            const card = document.createElement("div");
+            card.style.cssText =
+              "margin-top:16px;padding:12px 16px;border-radius:8px;font-size:14px;background:" +
+              (status === 401 ? "#fde7e9" : "#fff8e1") + ";";
+
+            const heading = document.createElement("strong");
+            heading.textContent = status === 401 ? "Disconnected." : "Opper balance is empty.";
+            card.appendChild(heading);
+
+            const link = document.createElement("a");
+            link.style.color = "#000";
+            link.style.textDecoration = "underline";
+            if (status === 401) {
+              card.appendChild(document.createTextNode(
+                " This app is no longer connected to the user's Opper account. "
+              ));
+              link.href = "/";
+              link.textContent = "Reconnect";
+              card.appendChild(link);
+              card.appendChild(document.createTextNode(" to keep using AI."));
+            } else {
+              card.appendChild(document.createTextNode(" "));
+              link.href = portalUrl;
+              link.target = "_blank";
+              link.rel = "noopener noreferrer";
+              link.textContent = "Top up your Opper Wallet";
+              card.appendChild(link);
+              card.appendChild(document.createTextNode(
+                " to keep using AI in this app."
+              ));
+            }
+            el.appendChild(card);
+          }
+
           document.getElementById("chat-form").addEventListener("submit", async (e) => {
             e.preventDefault();
             const prompt = document.getElementById("prompt").value;
             const resultEl = document.getElementById("chat-result");
             resultEl.textContent = "Calling Opper...";
+            renderConnectionState(null);
             try {
               const res = await fetch(opperUrl + "/v2/call", {
                 method: "POST",
                 headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
                 body: JSON.stringify({ name: "web-example", instructions: "Answer concisely.", input: prompt }),
               });
+              if (res.status === 401 || res.status === 402) {
+                renderConnectionState(res.status);
+                resultEl.textContent = "";
+                return;
+              }
               const data = await res.json();
               resultEl.textContent = data.message || JSON.stringify(data, null, 2);
             } catch (err) {

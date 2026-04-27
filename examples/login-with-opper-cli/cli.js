@@ -73,6 +73,28 @@ async function main() {
                 input: "What is 2+2?",
             }),
         });
+
+        // Two states a partner app should always handle on calls to /v2/call:
+        //   401 — API key invalid. The user disconnected this app from their
+        //         Opper Wallet (or Opper revoked the key). They must re-run
+        //         the login flow to get a new key.
+        //   402 — Payment required. Opper balance is depleted. The user tops
+        //         up at their Wallet portal and the existing key keeps working.
+        if (callRes.status === 401) {
+            console.error(
+                "\n❌ Disconnected — your API key is no longer valid."
+            );
+            console.error(
+                "   Re-run this command to authorize again with Opper.\n"
+            );
+            process.exit(1);
+        }
+        if (callRes.status === 402) {
+            console.error("\n💰 Opper balance is empty.");
+            console.error(`   Top up at ${opper.getPortalUrl()} and try again.\n`);
+            process.exit(1);
+        }
+
         const callData = await callRes.json();
         console.log("Response:", callData.message || JSON.stringify(callData));
     } catch (err) {
