@@ -47,5 +47,6 @@ htmlcov/
 
 # Generated output
 examples/chatbot-openresponses/public/media/
+examples/brainstorm-time/public/media/
 **/output/
 uv.lock

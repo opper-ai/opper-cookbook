@@ -1,0 +1,17 @@
+{
+  "name": "brainstorm-time",
+  "version": "0.1.0",
+  "description": "Realtime voice brainstorming — browser-direct WebSocket via ephemeral tickets, powered by Opper's Realtime API",
+  "type": "module",
+  "scripts": {
+    "start": "tsx server.ts"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "opperai": "^4.0.0-beta.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "tsx": "^4.0.0"
+  }
+}
