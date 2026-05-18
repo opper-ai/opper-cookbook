@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Brainstorm Time</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Wix+Madefor+Display:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background: oklch(1 0 0);
+      --foreground: oklch(0.2938 0.0414 248.11);
+      --card: oklch(1 0 0);
+      --muted: oklch(0.97 0 0);
+      --muted-foreground: oklch(0.45 0 0);
+      --border: oklch(0.922 0 0);
+      --primary: oklch(0.205 0 0);
+      --primary-foreground: oklch(0.985 0 0);
+      --ring: oklch(0.708 0 0);
+      --radius: 0.625rem;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --background: oklch(0.252 0 102.07);
+        --foreground: oklch(0.9881 0 102.07);
+        --card: oklch(0.23 0 0);
+        --muted: oklch(0.30 0 0);
+        --muted-foreground: oklch(0.72 0 0);
+        --border: oklch(0.35 0 0);
+        --primary: oklch(0.9881 0 102.07);
+        --primary-foreground: oklch(0.252 0 102.07);
+        --ring: oklch(0.556 0 0);
+      }
+    }
+    html, body { background: var(--background); color: var(--foreground); }
+    body { font-family: 'Wix Madefor Display', system-ui, -apple-system, sans-serif; }
+    .chat-scroll::-webkit-scrollbar { width: 6px; }
+    .chat-scroll::-webkit-scrollbar-track { background: transparent; }
+    .chat-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    select, textarea, input, button { font-family: inherit; }
+    select { background-image: none; }
+    .field {
+      background: var(--card);
+      color: var(--foreground);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      transition: border-color 150ms ease, box-shadow 150ms ease;
+    }
+    .field:hover { border-color: oklch(from var(--border) calc(l - 0.05) c h); }
+    .field:focus-visible { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px oklch(from var(--ring) l c h / 0.25); }
+    .btn-primary {
+      background: var(--primary);
+      color: var(--primary-foreground);
+      border-radius: var(--radius);
+      transition: opacity 150ms ease, transform 80ms ease;
+    }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-primary:active { transform: translateY(1px); }
+    .btn-ghost {
+      background: var(--muted);
+      color: var(--muted-foreground);
+      border-radius: var(--radius);
+      transition: background-color 150ms ease, color 150ms ease;
+    }
+    .btn-ghost:hover { color: var(--foreground); }
+    .recording { animation: recPulse 1.6s ease-in-out infinite; }
+    @keyframes recPulse {
+      0%, 100% { box-shadow: 0 0 0 0 oklch(from var(--foreground) l c h / 0.18); }
+      50%      { box-shadow: 0 0 0 10px oklch(from var(--foreground) l c h / 0); }
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    .fade-in { animation: fadeIn 180ms ease-out; }
+    .status-dot { width: 6px; height: 6px; border-radius: 999px; background: var(--muted-foreground); display: inline-block; }
+    .status-dot.live { background: oklch(0.65 0.18 145); box-shadow: 0 0 0 3px oklch(0.65 0.18 145 / 0.18); }
+
+    /* Board panel — slide-in from the right */
+    .board-panel {
+      position: absolute;
+      top: 0; right: 0; bottom: 0;
+      width: min(440px, 100%);
+      background: var(--background);
+      border-left: 1px solid var(--border);
+      transform: translateX(100%);
+      transition: transform 220ms ease;
+      display: flex; flex-direction: column;
+      z-index: 10;
+    }
+    .board-panel.open { transform: translateX(0); }
+    .board-empty {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      padding: 24px; text-align: center;
+      color: var(--muted-foreground); font-size: 13px; line-height: 1.5;
+    }
+    .board-grid {
+      flex: 1; overflow-y: auto;
+      padding: 14px; display: flex; flex-direction: column; gap: 14px;
+    }
+    .board-column {
+      background: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px;
+    }
+    .board-column-title {
+      font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+      color: var(--muted-foreground); padding: 2px 4px 8px; display: flex; align-items: center; gap: 6px;
+    }
+    .board-column-swatch { width: 8px; height: 8px; border-radius: 2px; }
+    .board-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 13px; line-height: 1.4;
+      margin-bottom: 6px;
+      position: relative;
+      animation: fadeIn 180ms ease-out;
+    }
+    .board-card.child {
+      margin-left: 18px;
+      border-left: 2px solid var(--border);
+      border-top-left-radius: 4px;
+      border-bottom-left-radius: 4px;
+    }
+    .board-card-remove {
+      position: absolute; top: 4px; right: 4px;
+      width: 18px; height: 18px; border-radius: 4px;
+      display: none; align-items: center; justify-content: center;
+      color: var(--muted-foreground); cursor: pointer;
+    }
+    .board-card:hover .board-card-remove { display: flex; }
+    .board-card-remove:hover { background: var(--muted); color: var(--foreground); }
+    .board-count-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 18px; height: 18px; padding: 0 5px;
+      font-size: 10px; font-weight: 600;
+      border-radius: 999px;
+      background: var(--foreground); color: var(--background);
+      margin-left: 4px;
+    }
+
+    /* Preparation overlay — covers the empty chat while the server
+       runs the topic web search + ticket mint and the WS handshake
+       completes. Hidden once session.started arrives. */
+    .prep-overlay {
+      flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 16px; padding: 32px;
+      animation: fadeIn 200ms ease-out;
+    }
+    .prep-icon {
+      width: 56px; height: 56px; border-radius: 999px;
+      background: var(--muted); color: var(--foreground);
+      display: flex; align-items: center; justify-content: center;
+      animation: prepBreathe 1.8s ease-in-out infinite;
+    }
+    @keyframes prepBreathe {
+      0%, 100% { opacity: 0.6; transform: scale(0.96); }
+      50%      { opacity: 1;   transform: scale(1); }
+    }
+    .prep-step {
+      font-size: 14px; color: var(--foreground); text-align: center; max-width: 360px; line-height: 1.5;
+    }
+    .prep-topic {
+      font-size: 12px; color: var(--muted-foreground); text-align: center; max-width: 360px;
+      padding: 6px 12px; border-radius: 999px; background: var(--muted);
+    }
+    .prep-trail {
+      display: inline-flex; gap: 3px; margin-left: 6px; vertical-align: middle;
+    }
+    .prep-trail span {
+      width: 4px; height: 4px; border-radius: 999px; background: var(--muted-foreground);
+      animation: dotBlink 1.2s ease-in-out infinite;
+    }
+    .prep-trail span:nth-child(2) { animation-delay: 0.15s; }
+    .prep-trail span:nth-child(3) { animation-delay: 0.30s; }
+    @keyframes dotBlink {
+      0%, 80%, 100% { opacity: 0.25; }
+      40%           { opacity: 1; }
+    }
+  </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+  <!-- LANDING -->
+  <div id="landing" class="flex-1 flex flex-col items-center justify-center px-4 overflow-y-auto py-10">
+    <div class="w-full max-w-md fade-in">
+      <header class="text-center mb-8 flex flex-col items-center gap-3">
+        <div class="flex items-center justify-center" style="width:48px;height:48px;border-radius:999px;background:var(--muted);color:var(--foreground)">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9 18h6"/>
+            <path d="M10 21h4"/>
+            <path d="M12 3a6 6 0 0 0-4 10.5c.7.7 1.2 1.4 1.5 2.5h5c.3-1.1.8-1.8 1.5-2.5A6 6 0 0 0 12 3z"/>
+          </svg>
+        </div>
+        <h1 class="text-3xl md:text-4xl font-bold tracking-tight">Brainstorm Time</h1>
+      </header>
+
+      <div class="rounded-2xl p-5 md:p-6 space-y-4 fade-in" style="background:var(--card);border:1px solid var(--border);box-shadow:0 1px 2px oklch(0 0 0 / 0.04)">
+        <div>
+          <label class="block text-xs font-medium mb-1.5" style="color:var(--muted-foreground)">Model</label>
+          <select id="modelSelect" class="field w-full px-3 py-2.5 text-sm cursor-pointer">
+            <option value="">Loading models…</option>
+          </select>
+        </div>
+
+        <div id="voiceWrap" class="hidden">
+          <label class="block text-xs font-medium mb-1.5" style="color:var(--muted-foreground)">Voice</label>
+          <select id="voiceSelect" class="field w-full px-3 py-2.5 text-sm cursor-pointer"></select>
+        </div>
+
+        <div id="reasoningWrap" class="hidden">
+          <label class="block text-xs font-medium mb-1.5" style="color:var(--muted-foreground)">Reasoning effort</label>
+          <select id="reasoningSelect" class="field w-full px-3 py-2.5 text-sm cursor-pointer"></select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium mb-1.5" style="color:var(--muted-foreground)">Seed your brainstorm (optional)</label>
+          <textarea
+            id="topicInput"
+            rows="3"
+            placeholder="Drop a topic…"
+            class="field w-full px-3 py-2.5 text-sm resize-none"
+          ></textarea>
+        </div>
+
+        <button onclick="startSession()" class="btn-primary w-full px-4 py-2.5 text-sm font-medium">
+          Start brainstorming
+        </button>
+      </div>
+
+      <p class="text-xs text-center mt-4" style="color:var(--muted-foreground)">
+        Mic + speakers recommended
+      </p>
+    </div>
+  </div>
+
+  <!-- SESSION -->
+  <div id="session" class="flex-1 flex flex-col hidden min-h-0 relative">
+    <header class="flex items-center justify-between px-5 py-3 border-b" style="border-color:var(--border);background:var(--background)">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <span id="statusDot" class="status-dot"></span>
+        <div class="min-w-0">
+          <div class="text-sm font-semibold tracking-tight">Brainstorm Time</div>
+          <div id="statusText" class="text-xs truncate" style="color:var(--muted-foreground)">Connecting…</div>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="boardToggle" onclick="toggleBoard()" class="btn-ghost px-3 py-1.5 text-xs font-medium inline-flex items-center gap-1.5" title="Toggle board">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="3" width="7" height="9" rx="1"/>
+            <rect x="14" y="3" width="7" height="5" rx="1"/>
+            <rect x="14" y="12" width="7" height="9" rx="1"/>
+            <rect x="3" y="16" width="7" height="5" rx="1"/>
+          </svg>
+          <span>Board</span>
+          <span id="boardCount" class="board-count-badge hidden">0</span>
+        </button>
+        <button onclick="endSession()" class="btn-ghost px-3 py-1.5 text-xs font-medium">End</button>
+      </div>
+    </header>
+
+    <main class="flex-1 overflow-y-auto chat-scroll min-h-0 flex flex-col" id="chatArea">
+      <div id="prepOverlay" class="prep-overlay hidden">
+        <div class="prep-icon">
+          <svg class="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9 18h6"/><path d="M10 21h4"/>
+            <path d="M12 3a6 6 0 0 0-4 10.5c.7.7 1.2 1.4 1.5 2.5h5c.3-1.1.8-1.8 1.5-2.5A6 6 0 0 0 12 3z"/>
+          </svg>
+        </div>
+        <div id="prepStep" class="prep-step">
+          Warming up<span class="prep-trail"><span></span><span></span><span></span></span>
+        </div>
+        <div id="prepTopic" class="prep-topic hidden"></div>
+      </div>
+      <div class="max-w-2xl mx-auto px-4 py-6 space-y-3 w-full" id="messages"></div>
+    </main>
+
+    <!-- Brainstorm board (slide-over). The AI populates this via the
+         add_idea / remove_idea / clear_board client-side tools — calls are
+         intercepted before they'd hit the server, so the board lives
+         entirely in browser state. -->
+    <aside id="boardPanel" class="board-panel" aria-hidden="true">
+      <div class="flex items-center justify-between px-4 py-3 border-b" style="border-color:var(--border)">
+        <div class="text-sm font-semibold tracking-tight">Board</div>
+        <div class="flex items-center gap-1">
+          <button onclick="clearBoard()" class="btn-ghost px-2.5 py-1 text-xs">Clear</button>
+          <button onclick="toggleBoard()" class="btn-ghost px-2.5 py-1 text-xs" title="Close board">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+        </div>
+      </div>
+      <div id="boardEmpty" class="board-empty">
+        Ideas the AI captures during the brainstorm will appear here, grouped by theme.
+      </div>
+      <div id="boardGrid" class="board-grid hidden"></div>
+    </aside>
+
+    <footer class="border-t px-4 py-3" style="border-color:var(--border);background:var(--background)">
+      <div class="max-w-2xl mx-auto flex gap-2 items-end">
+        <button
+          id="micBtn"
+          onclick="toggleMic()"
+          class="btn-ghost p-2.5 flex-shrink-0"
+          title="Toggle mic (Space)"
+        >
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-14 0m7 0v4m0 4h.01M12 3a3 3 0 00-3 3v4a3 3 0 006 0V6a3 3 0 00-3-3z"/>
+          </svg>
+        </button>
+        <textarea id="textInput" placeholder="Type a thought…" rows="1"
+          class="field flex-1 px-3 py-2.5 text-sm resize-none"
+          style="max-height:100px"
+        ></textarea>
+        <button onclick="sendText()" class="btn-primary p-2.5 flex-shrink-0" title="Send (Enter)">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7"/>
+          </svg>
+        </button>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    // ── State ────────────────────────────────────────────────────────────
+    let ws = null;
+    let audioContext = null;
+    let micStream = null;
+    let micProcessor = null;
+    let micSource = null;
+    let micActive = false;
+    let playbackQueue = [];
+    let isPlaying = false;
+    let currentSource = null;
+    let inputSampleRate = 24000;   // for mic capture, set from session.started
+    let outputSampleRate = 24000;  // for playback, set from session.started
+
+    const landing = document.getElementById("landing");
+    const session = document.getElementById("session");
+    const messages = document.getElementById("messages");
+    const chatArea = document.getElementById("chatArea");
+    const topicInput = document.getElementById("topicInput");
+    const textInput = document.getElementById("textInput");
+    const micBtn = document.getElementById("micBtn");
+    const statusText = document.getElementById("statusText");
+    const statusDot = document.getElementById("statusDot");
+    const modelSelect = document.getElementById("modelSelect");
+    const voiceSelect = document.getElementById("voiceSelect");
+    const reasoningSelect = document.getElementById("reasoningSelect");
+    const boardPanel = document.getElementById("boardPanel");
+    const boardGrid = document.getElementById("boardGrid");
+    const boardEmpty = document.getElementById("boardEmpty");
+    const boardCount = document.getElementById("boardCount");
+    const prepOverlay = document.getElementById("prepOverlay");
+    const prepStep = document.getElementById("prepStep");
+    const prepTopic = document.getElementById("prepTopic");
+
+    // Prep overlay control. Shows what the backend is doing during the
+    // multi-second gap between Start click and session.started: topic web
+    // search → ticket mint → WS upgrade → upstream session ready.
+    const TRAIL = `<span class="prep-trail"><span></span><span></span><span></span></span>`;
+    function showPrep(topic) {
+      prepStep.innerHTML = `Setting things up${TRAIL}`;
+      if (topic) {
+        prepTopic.textContent = `Topic: ${topic}`;
+        prepTopic.classList.remove("hidden");
+      } else {
+        prepTopic.classList.add("hidden");
+      }
+      prepOverlay.classList.remove("hidden");
+    }
+    function prepStepText(label) {
+      prepStep.innerHTML = `${label}${TRAIL}`;
+    }
+    function hidePrep() { prepOverlay.classList.add("hidden"); }
+
+    let MODELS_BY_ID = {};
+    let DEFAULT_REASONING_EFFORT = "low";
+
+    function refreshVoiceSelector() {
+      const m = MODELS_BY_ID[modelSelect.value];
+      const wrap = document.getElementById("voiceWrap");
+      if (!m) { wrap.classList.add("hidden"); return; }
+      voiceSelect.innerHTML = "";
+      for (const v of m.voices) {
+        const o = document.createElement("option");
+        o.value = v; o.textContent = v;
+        if (v === m.defaultVoice) o.selected = true;
+        voiceSelect.appendChild(o);
+      }
+      wrap.classList.toggle("hidden", m.voices.length === 0);
+    }
+
+    function refreshReasoningSelector() {
+      const m = MODELS_BY_ID[modelSelect.value];
+      const wrap = document.getElementById("reasoningWrap");
+      if (!m || m.reasoningEfforts.length === 0) {
+        wrap.classList.add("hidden");
+        return;
+      }
+      reasoningSelect.innerHTML = "";
+      for (const r of m.reasoningEfforts) {
+        const o = document.createElement("option");
+        o.value = r; o.textContent = r;
+        if (r === DEFAULT_REASONING_EFFORT) o.selected = true;
+        reasoningSelect.appendChild(o);
+      }
+      if (!m.reasoningEfforts.includes(DEFAULT_REASONING_EFFORT)) {
+        reasoningSelect.selectedIndex = 0;
+      }
+      wrap.classList.remove("hidden");
+    }
+
+    (async function loadConfig() {
+      try {
+        const res = await fetch("/api/config");
+        const cfg = await res.json();
+        DEFAULT_REASONING_EFFORT = cfg.defaultReasoningEffort || "low";
+        MODELS_BY_ID = Object.fromEntries(cfg.models.map((m) => [m.id, m]));
+        modelSelect.innerHTML = "";
+        for (const m of cfg.models) {
+          const o = document.createElement("option");
+          o.value = m.id; o.textContent = m.label;
+          if (m.id === cfg.defaultModel) o.selected = true;
+          modelSelect.appendChild(o);
+        }
+        refreshVoiceSelector();
+        refreshReasoningSelector();
+        modelSelect.addEventListener("change", () => {
+          refreshVoiceSelector();
+          refreshReasoningSelector();
+        });
+      } catch (err) {
+        console.error("config load failed:", err);
+      }
+    })();
+
+    // ── Helpers ──────────────────────────────────────────────────────────
+    function setStatus(t, live) {
+      statusText.textContent = t;
+      if (statusDot) statusDot.classList.toggle("live", !!live);
+    }
+    function escapeHtml(t) { const d = document.createElement("div"); d.textContent = t; return d.innerHTML; }
+    function scrollDown() { requestAnimationFrame(() => { chatArea.scrollTop = chatArea.scrollHeight; }); }
+
+    function addMessage(role, content, extra) {
+      const el = document.createElement("div");
+      el.className = "flex gap-3 fade-in" + (role === "user" ? " justify-end" : "");
+      if (role === "user") {
+        el.innerHTML = `<div class="px-3.5 py-2.5 max-w-[80%]" style="background:var(--primary);color:var(--primary-foreground);border-radius:var(--radius);border-top-right-radius:4px"><p class="text-sm leading-relaxed">${escapeHtml(content)}</p></div>`;
+      } else if (role === "assistant") {
+        let extras = "";
+        if (extra?.media?.type === "image") {
+          extras += `<div class="mt-2 overflow-hidden cursor-pointer" style="border:1px solid var(--border);border-radius:var(--radius)" onclick="window.open('${extra.media.url}','_blank')"><img src="${extra.media.url}" class="w-full" /></div>`;
+        }
+        if (extra?.searchResults) {
+          extras += `
+            <details class="mt-2 px-3.5 py-2.5 text-xs cursor-pointer" style="background:var(--muted);border:1px solid var(--border);border-radius:var(--radius);color:var(--muted-foreground)">
+              <summary class="font-medium cursor-pointer select-none" style="color:var(--foreground)">
+                Web results
+              </summary>
+              <pre class="mt-2 whitespace-pre-wrap font-sans text-xs leading-relaxed">${escapeHtml(extra.searchResults)}</pre>
+            </details>`;
+        }
+        el.innerHTML = `<div class="max-w-[80%]"><div class="px-3.5 py-2.5" style="background:var(--muted);color:var(--foreground);border-radius:var(--radius);border-top-left-radius:4px"><p class="text-sm leading-relaxed">${escapeHtml(content)}</p></div>${extras}</div>`;
+      } else if (role === "transcript") {
+        el.innerHTML = `<div class="w-full text-center"><span class="text-xs italic" style="color:var(--muted-foreground)">You: "${escapeHtml(content)}"</span></div>`;
+      } else {
+        el.innerHTML = `<div class="w-full text-center"><span class="text-xs px-3 py-1" style="background:var(--muted);color:var(--muted-foreground);border-radius:999px">${escapeHtml(content)}</span></div>`;
+      }
+      messages.appendChild(el);
+      scrollDown();
+    }
+
+    // Streaming text accumulator for assistant transcription
+    let streamEl = null;
+    let streamText = "";
+    function appendStreamDelta(delta) {
+      if (!streamEl) {
+        const wrapper = document.createElement("div");
+        wrapper.className = "flex gap-3 fade-in";
+        wrapper.innerHTML = `<div class="max-w-[80%]"><div class="px-3.5 py-2.5" style="background:var(--muted);color:var(--foreground);border-radius:var(--radius);border-top-left-radius:4px"><p class="stream-text text-sm leading-relaxed"></p></div></div>`;
+        messages.appendChild(wrapper);
+        streamEl = wrapper.querySelector(".stream-text");
+      }
+      streamText += delta;
+      streamEl.textContent = streamText;
+      scrollDown();
+    }
+    function endStream() { streamEl = null; streamText = ""; }
+
+    // ── Audio: chunked base64 + downsample ──────────────────────────────
+    function uint8ToBase64(bytes) {
+      let bin = "";
+      for (let i = 0; i < bytes.length; i += 8192) {
+        const chunk = bytes.subarray(i, i + 8192);
+        for (let j = 0; j < chunk.length; j++) bin += String.fromCharCode(chunk[j]);
+      }
+      return btoa(bin);
+    }
+    function downsample(f32, srcRate, dstRate) {
+      if (srcRate === dstRate) return f32;
+      const ratio = srcRate / dstRate;
+      const len = Math.floor(f32.length / ratio);
+      const out = new Float32Array(len);
+      for (let i = 0; i < len; i++) {
+        const idx = i * ratio;
+        const lo = Math.floor(idx);
+        const hi = Math.min(lo + 1, f32.length - 1);
+        const frac = idx - lo;
+        out[i] = f32[lo] * (1 - frac) + f32[hi] * frac;
+      }
+      return out;
+    }
+
+    async function playAudioChunk(b64) {
+      playbackQueue.push(b64);
+      if (!isPlaying) drainPlayback();
+    }
+
+    async function drainPlayback() {
+      if (playbackQueue.length === 0) { isPlaying = false; return; }
+      isPlaying = true;
+      const b64 = playbackQueue.shift();
+      try {
+        if (!audioContext) audioContext = new AudioContext();
+        if (audioContext.state === "suspended") await audioContext.resume();
+        const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+        const pcm16 = new Int16Array(bytes.buffer);
+        const f32 = new Float32Array(pcm16.length);
+        for (let i = 0; i < pcm16.length; i++) f32[i] = pcm16[i] / 32768;
+        const buf = audioContext.createBuffer(1, f32.length, outputSampleRate);
+        buf.copyToChannel(f32, 0);
+        const src = audioContext.createBufferSource();
+        src.buffer = buf;
+        src.connect(audioContext.destination);
+        currentSource = src;
+        src.onended = () => { currentSource = null; drainPlayback(); };
+        src.start();
+      } catch (e) {
+        console.warn("playback error:", e);
+        drainPlayback();
+      }
+    }
+
+    function stopPlayback() {
+      playbackQueue = [];
+      isPlaying = false;
+      if (currentSource) {
+        try { currentSource.onended = null; currentSource.stop(); } catch {}
+        currentSource = null;
+      }
+    }
+
+    // ── Mic ──────────────────────────────────────────────────────────────
+    async function toggleMic() { if (micActive) stopMic(); else await startMic(); }
+
+    async function startMic() {
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({
+          audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+        });
+        if (!audioContext) audioContext = new AudioContext();
+        if (audioContext.state === "suspended") await audioContext.resume();
+
+        const nativeRate = audioContext.sampleRate;
+        micSource = audioContext.createMediaStreamSource(micStream);
+        micProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+
+        micProcessor.onaudioprocess = (e) => {
+          if (!micActive || !ws || ws.readyState !== WebSocket.OPEN) return;
+          const raw = e.inputBuffer.getChannelData(0);
+          const ds = downsample(raw, nativeRate, inputSampleRate);
+          const pcm16 = new Int16Array(ds.length);
+          for (let i = 0; i < ds.length; i++) {
+            pcm16[i] = Math.max(-32768, Math.min(32767, Math.round(ds[i] * 32768)));
+          }
+          const b64 = uint8ToBase64(new Uint8Array(pcm16.buffer));
+          ws.send(JSON.stringify({ type: "audio.append", audio: b64 }));
+        };
+
+        micSource.connect(micProcessor);
+        micProcessor.connect(audioContext.destination);
+        micActive = true;
+        micBtn.classList.remove("btn-ghost");
+        micBtn.classList.add("btn-primary", "recording");
+        setStatus("Listening…", true);
+      } catch (err) {
+        console.error("mic error:", err);
+        addMessage("system", "Microphone access denied — use text input.");
+      }
+    }
+
+    function stopMic() {
+      micActive = false;
+      if (micProcessor) { micProcessor.disconnect(); micProcessor = null; }
+      if (micSource) { micSource.disconnect(); micSource = null; }
+      if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+      micBtn.classList.remove("btn-primary", "recording");
+      micBtn.classList.add("btn-ghost");
+      setStatus("Connected", true);
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "audio.commit" }));
+      }
+    }
+
+    // ── Text ────────────────────────────────────────────────────────────
+    function sendText() {
+      const t = textInput.value.trim();
+      if (!t || !ws || ws.readyState !== WebSocket.OPEN) return;
+      addMessage("user", t);
+      textInput.value = "";
+      ws.send(JSON.stringify({ type: "text.input", text: t }));
+      ws.send(JSON.stringify({ type: "response.create" }));
+    }
+
+    textInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendText(); }
+    });
+
+    // ── Brainstorm board (client-side tools) ────────────────────────────
+    // The board lives entirely in browser state. The AI calls add_idea /
+    // remove_idea / clear_board over the realtime WS; we intercept those
+    // tool.call events below before they'd hit the server-side tool runner.
+    let boardIdeas = [];          // [{id, text, column, parent_id?}]
+    let boardOpenedOnce = false;  // auto-open the panel on first add
+
+    function boardId() { return "i_" + Math.random().toString(36).slice(2, 9); }
+
+    function columnColor(name) {
+      // Stable hue per column name — simple djb2-ish hash → 360°.
+      let h = 0;
+      for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+      const hue = Math.abs(h) % 360;
+      return `oklch(0.72 0.12 ${hue})`;
+    }
+
+    function addBoardIdea({ text, column, parent_id }) {
+      const idea = {
+        id: boardId(),
+        text: String(text || "").trim(),
+        column: column ? String(column).trim() : "Ideas",
+        parent_id: parent_id || null,
+      };
+      if (!idea.text) return { error: "text is required" };
+      // Reject parent_id that doesn't exist — quietly drop the link rather
+      // than fail, the idea itself is still useful.
+      if (idea.parent_id && !boardIdeas.find((b) => b.id === idea.parent_id)) {
+        idea.parent_id = null;
+      }
+      boardIdeas.push(idea);
+      renderBoard();
+      if (!boardOpenedOnce) { boardOpenedOnce = true; openBoard(); }
+      return { ok: true, id: idea.id };
+    }
+
+    function removeBoardIdea({ id }) {
+      const before = boardIdeas.length;
+      // Also drop children whose parent is being removed.
+      boardIdeas = boardIdeas.filter((b) => b.id !== id && b.parent_id !== id);
+      renderBoard();
+      return { ok: true, removed: before - boardIdeas.length };
+    }
+
+    function clearBoardIdeas() {
+      boardIdeas = [];
+      renderBoard();
+      return { ok: true };
+    }
+
+    function renderBoard() {
+      // Update header count.
+      if (boardIdeas.length === 0) {
+        boardCount.classList.add("hidden");
+        boardGrid.classList.add("hidden");
+        boardEmpty.classList.remove("hidden");
+        boardGrid.innerHTML = "";
+        return;
+      }
+      boardCount.textContent = String(boardIdeas.length);
+      boardCount.classList.remove("hidden");
+      boardEmpty.classList.add("hidden");
+      boardGrid.classList.remove("hidden");
+
+      // Group by column, preserving first-seen order.
+      const byColumn = new Map();
+      for (const idea of boardIdeas) {
+        if (!byColumn.has(idea.column)) byColumn.set(idea.column, []);
+        byColumn.get(idea.column).push(idea);
+      }
+
+      const html = [];
+      for (const [col, items] of byColumn) {
+        const swatch = columnColor(col);
+        // Sort: top-level first (in insertion order), then their children
+        // grouped under each.
+        const parents = items.filter((i) => !i.parent_id);
+        const children = items.filter((i) => i.parent_id);
+        const orphans = children.filter((c) => !items.find((i) => i.id === c.parent_id));
+        const ordered = [];
+        for (const p of parents) {
+          ordered.push(p);
+          for (const c of children) if (c.parent_id === p.id) ordered.push(c);
+        }
+        for (const o of orphans) if (!ordered.includes(o)) ordered.push(o);
+
+        const cards = ordered.map((idea) => {
+          const childCls = idea.parent_id ? " child" : "";
+          return `
+            <div class="board-card${childCls}" data-id="${idea.id}">
+              <span>${escapeHtml(idea.text)}</span>
+              <span class="board-card-remove" onclick="removeBoardCardClick('${idea.id}')" title="Remove">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              </span>
+            </div>`;
+        }).join("");
+
+        html.push(`
+          <div class="board-column">
+            <div class="board-column-title">
+              <span class="board-column-swatch" style="background:${swatch}"></span>
+              ${escapeHtml(col)}
+            </div>
+            ${cards}
+          </div>`);
+      }
+      boardGrid.innerHTML = html.join("");
+    }
+
+    function removeBoardCardClick(id) { removeBoardIdea({ id }); }
+
+    function openBoard()  { boardPanel.classList.add("open");    boardPanel.setAttribute("aria-hidden", "false"); }
+    function closeBoard() { boardPanel.classList.remove("open"); boardPanel.setAttribute("aria-hidden", "true"); }
+    function toggleBoard(){ boardPanel.classList.contains("open") ? closeBoard() : openBoard(); }
+    function clearBoard() { if (boardIdeas.length && confirm("Clear all ideas from the board?")) clearBoardIdeas(); }
+
+    // Map of client-side tool name → handler. The realtime tool.call
+    // dispatcher checks this first; only unknown names fall through to
+    // the server-side /api/tools/:name path.
+    const CLIENT_TOOLS = {
+      add_idea: addBoardIdea,
+      remove_idea: removeBoardIdea,
+      clear_board: clearBoardIdeas,
+    };
+
+    // ── Session lifecycle ───────────────────────────────────────────────
+    async function startSession() {
+      const topic = topicInput.value.trim();
+      const model = modelSelect.value;
+      const voice = voiceSelect && !document.getElementById("voiceWrap").classList.contains("hidden")
+        ? voiceSelect.value : "";
+      const reasoningEffort = reasoningSelect && !document.getElementById("reasoningWrap").classList.contains("hidden")
+        ? reasoningSelect.value : "";
+
+      landing.classList.add("hidden");
+      session.classList.remove("hidden");
+      messages.innerHTML = "";
+      showPrep(topic);
+      prepStepText(topic ? `Researching the topic` : `Setting things up`);
+      setStatus(topic ? "Researching topic…" : "Minting ticket…");
+
+      // Step 1: ask our backend to mint a ticket. The server validates
+      // model/voice/reasoning_effort against its allowlist before
+      // accepting — pattern 1 from the architecture story.
+      let ticket;
+      try {
+        const resp = await fetch("/api/realtime/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ topic, model, voice, reasoning_effort: reasoningEffort }),
+        });
+        if (!resp.ok) {
+          const body = await resp.json().catch(() => ({ error: `mint ${resp.status}` }));
+          throw new Error(body.error || `mint ${resp.status}`);
+        }
+        ticket = await resp.json();
+        console.log("[ticket] minted, expires", ticket.expiresAt);
+        prepStepText("Connecting");
+      } catch (err) {
+        setStatus("Failed to mint ticket");
+        hidePrep();
+        addMessage("system", "Could not mint a realtime ticket: " + err.message);
+        return;
+      }
+
+      // Step 2: open the realtime WebSocket directly against Opper using
+      // the ticket. We pass the ticket via the Sec-WebSocket-Protocol
+      // subprotocol (`opper-ticket.<value>`) rather than as a query
+      // parameter — bearer credentials in URLs end up in access logs,
+      // referrer headers, and browser history. The subprotocol header
+      // is request-only and stays out of those surfaces.
+      setStatus("Connecting…");
+      ws = new WebSocket(ticket.wsBaseUrl, [`opper-ticket.${ticket.clientSecret}`]);
+
+      ws.onopen = () => {
+        console.log("[ws] open — direct browser → Opper");
+        setStatus("Connected, configuring session…");
+        prepStepText("Waking up the model");
+        // All the heavy config (model/voice/instructions/tools) was bound
+        // at mint time and cannot be overridden here. Sending an empty
+        // session.start is enough to start the session; the server fills
+        // in the bound fields server-side.
+        ws.send(JSON.stringify({ type: "session.start", config: {} }));
+      };
+
+      ws.onmessage = (evt) => {
+        try {
+          const msg = JSON.parse(evt.data);
+          handleServerEvent(msg);
+        } catch (err) {
+          console.warn("[ws] parse error:", err);
+        }
+      };
+
+      ws.onclose = (e) => {
+        console.log("[ws] closed", e.code, e.reason);
+        setStatus("Disconnected");
+        if (!e.wasClean) addMessage("system", "Connection lost.");
+      };
+
+      ws.onerror = (err) => {
+        console.error("[ws] error:", err);
+        setStatus("Error");
+      };
+    }
+
+    async function handleServerEvent(msg) {
+      const t = msg.type || "";
+      switch (t) {
+        case "session.started":
+          inputSampleRate = msg.input_sample_rate || msg.sample_rate || 24000;
+          outputSampleRate = msg.output_sample_rate || inputSampleRate;
+          hidePrep();
+          setStatus("Connected — say or type anything", true);
+          addMessage("system", "Brainstorm started");
+          startMic();
+          return;
+
+        case "audio.delta":
+          if (msg.audio) playAudioChunk(msg.audio);
+          return;
+
+        case "text.delta":
+          appendStreamDelta(msg.delta || "");
+          return;
+
+        case "transcript.committed":
+          addMessage("transcript", msg.transcript || "");
+          return;
+
+        case "speech.started":
+          stopPlayback();
+          endStream();
+          return;
+
+        case "response.started":
+          return;
+
+        case "response.completed":
+        case "response.done":
+          endStream();
+          return;
+
+        case "tool.call": {
+          // Dispatch: client-side tools (board) run synchronously in the
+          // browser; everything else POSTs to the server-side runner where
+          // the Opper API key lives.
+          const args = typeof msg.tool_arguments === "string"
+            ? JSON.parse(msg.tool_arguments)
+            : msg.tool_arguments || {};
+          const clientFn = CLIENT_TOOLS[msg.tool_name];
+          if (clientFn) {
+            try {
+              const toolResult = clientFn(args) || { ok: true };
+              ws.send(JSON.stringify({
+                type: "tool.result",
+                tool_call_id: msg.tool_call_id,
+                tool_result: toolResult,
+              }));
+            } catch (err) {
+              console.error("client tool failed:", err);
+              ws.send(JSON.stringify({
+                type: "tool.result",
+                tool_call_id: msg.tool_call_id,
+                tool_result: { error: String(err.message || err) },
+              }));
+            }
+            return;
+          }
+
+          // Server-side path. A "Using tool:" hint is only shown for these
+          // because client tools update visible UI directly — repeating
+          // "Using tool: add_idea" each time would clutter the transcript.
+          addMessage("system", `Using tool: ${msg.tool_name}`);
+          try {
+            const r = await fetch(`/api/tools/${encodeURIComponent(msg.tool_name)}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(args),
+            });
+            const toolResult = await r.json();
+            ws.send(JSON.stringify({
+              type: "tool.result",
+              tool_call_id: msg.tool_call_id,
+              tool_result: toolResult,
+            }));
+            if (toolResult.media) {
+              addMessage("assistant", toolResult.result, { media: toolResult.media });
+            } else if (msg.tool_name === "web_search") {
+              addMessage("assistant", "Found some inspiration:", { searchResults: toolResult.result });
+            }
+          } catch (err) {
+            console.error("tool failed:", err);
+            ws.send(JSON.stringify({
+              type: "tool.result",
+              tool_call_id: msg.tool_call_id,
+              tool_result: { result: "Tool failed: " + err.message },
+            }));
+          }
+          return;
+        }
+
+        case "session.terminating":
+          addMessage("system", `Session ending: ${msg.error?.code || "unknown"} — ${msg.error?.message || ""}`);
+          return;
+
+        case "error": {
+          const m = msg.message || msg.error?.message || msg.error || "unknown";
+          // Cosmetic errors that don't affect the user-visible state:
+          // - "cancel" / "buffer too small" are normal mid-turn artifacts
+          // - "tool call id … not found in conversation" fires when a slow
+          //   tool (e.g. image gen) finishes after the model already moved
+          //   on. The result is already rendered in the chat — nothing to
+          //   surface to the user.
+          if (typeof m === "string") {
+            const lower = m.toLowerCase();
+            if (lower.includes("cancel") || lower.includes("buffer too small") ||
+                lower.includes("not found in conversation") || lower.includes("tool call id")) {
+              return;
+            }
+          }
+          addMessage("system", "Error: " + m);
+          return;
+        }
+      }
+    }
+
+    function endSession() {
+      if (ws) { ws.close(); ws = null; }
+      stopMic();
+      stopPlayback();
+      if (audioContext) { audioContext.close(); audioContext = null; }
+      closeBoard();
+      clearBoardIdeas();
+      boardOpenedOnce = false;
+      hidePrep();
+      session.classList.add("hidden");
+      landing.classList.remove("hidden");
+    }
+
+    // Spacebar toggles mic when not typing
+    document.addEventListener("keydown", (e) => {
+      if (session.classList.contains("hidden")) return;
+      if (document.activeElement === textInput || document.activeElement === topicInput) return;
+      if (e.code === "Space") { e.preventDefault(); toggleMic(); }
+    });
+  </script>
+</body>
+</html>
