@@ -50,11 +50,12 @@ const PUBLIC_WS_BASE =
 // model: append here and update SUPPORTED_MODELS — no other code changes.
 //
 // Note on image input: the `screenshot` tool fires an `image.input` event
-// from the browser to the realtime WS. Per opper-ai/opper#2509 that event
-// is OpenAI-only on first ship; Gemini Live needs a different shape
-// (realtimeInput.video / mediaChunks) and is listed as a follow-up. The
-// `supportsImage` flag lets us mark which models actually receive the
-// screenshot vs. which just see the text tool result.
+// from the browser to the realtime WS. Opper normalizes this across
+// providers — same event name + JSON shape for OpenAI and Gemini Live —
+// and translates to each provider's native wire format underneath. The
+// only Gemini-specific constraint is that `image_url` must be a `data:`
+// URI rather than an `https://` URL, which we already satisfy (the tool
+// produces base64 JPEGs). `supportsImage` marks vision-capable models.
 type ModelEntry = {
   id: string;
   label: string;
@@ -75,7 +76,7 @@ const MODELS: ModelEntry[] = [
     label: "Gemini 3.1 Flash Live",
     defaultVoice: "Aoede",
     supportsReasoningEffort: false,
-    supportsImage: false,
+    supportsImage: true,
   },
 ];
 const DEFAULT_MODEL_ID = MODELS[0].id;
