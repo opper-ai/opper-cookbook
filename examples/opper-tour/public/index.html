@@ -140,6 +140,13 @@
         </p>
       </header>
 
+      <div class="text-left mb-3">
+        <label class="block text-xs font-medium mb-1.5" style="color:var(--muted-foreground)">Voice model</label>
+        <select id="modelSelect" class="field w-full px-3 py-2.5 text-sm cursor-pointer">
+          <option value="">Loading…</option>
+        </select>
+      </div>
+
       <button onclick="startSession()" class="btn-primary w-full px-4 py-3 text-sm font-medium">
         Start the tour
       </button>
@@ -242,6 +249,27 @@
     const viewportEmpty = document.getElementById("viewportEmpty");
     const urlBadge = document.getElementById("urlBadge");
     const urlText = document.getElementById("urlText");
+    const modelSelect = document.getElementById("modelSelect");
+
+    // Populate the model dropdown from /api/config. Server is the source
+    // of truth for what's allowed; this just renders the menu.
+    (async function loadConfig() {
+      try {
+        const res = await fetch("/api/config");
+        const cfg = await res.json();
+        modelSelect.innerHTML = "";
+        for (const m of cfg.models) {
+          const o = document.createElement("option");
+          o.value = m.id;
+          o.textContent = m.label;
+          if (m.id === cfg.defaultModel) o.selected = true;
+          modelSelect.appendChild(o);
+        }
+      } catch (err) {
+        console.error("config load failed:", err);
+        modelSelect.innerHTML = '<option value="">(config error)</option>';
+      }
+    })();
 
     // ── Helpers ──────────────────────────────────────────────────────────
     function setStatus(t, live) {
@@ -438,9 +466,15 @@
       messages.innerHTML = "";
       setStatus("Setting up your tour…");
 
+      const chosenModel = modelSelect && modelSelect.value ? modelSelect.value : undefined;
+
       let ticket;
       try {
-        const resp = await fetch("/api/realtime/session", { method: "POST" });
+        const resp = await fetch("/api/realtime/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(chosenModel ? { model: chosenModel } : {}),
+        });
         if (!resp.ok) {
           const body = await resp.json().catch(() => ({ error: `mint ${resp.status}` }));
           throw new Error(body.error || `mint ${resp.status}`);
