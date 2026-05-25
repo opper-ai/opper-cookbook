@@ -436,7 +436,7 @@
       landing.classList.add("hidden");
       sessionEl.classList.remove("hidden");
       messages.innerHTML = "";
-      setStatus("Minting ticket…");
+      setStatus("Setting up your tour…");
 
       let ticket;
       try {
@@ -449,10 +449,17 @@
         sessionId = ticket.sessionId;
         console.log("[ticket] minted, sessionId", sessionId, "expires", ticket.expiresAt);
       } catch (err) {
-        setStatus("Failed to mint ticket");
+        setStatus("Failed to start tour");
         addMessage("system", "Could not start the tour: " + err.message);
         return;
       }
+
+      // Pre-warm: the mint endpoint also navigated the server-side Chromium
+      // to opper.ai, so we can paint the homepage in the viewport pane right
+      // away. The agent's instructions are aware of this and greet from the
+      // page rather than calling navigate() on its first turn.
+      if (ticket.initialScreenshot) showScreenshot(ticket.initialScreenshot);
+      if (ticket.initialUrl) showUrl(ticket.initialUrl);
 
       setStatus("Connecting…");
       // Ticket carried in subprotocol header — never in URL, query string,

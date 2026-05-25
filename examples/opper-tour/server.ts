@@ -456,8 +456,16 @@ const app = express();
 app.use(express.json({ limit: "1mb" }));
 app.use(express.static(join(__dirname, "public")));
 
-// Mint a ticket + sessionId. The sessionId is *ours*, not Opper's — it
-// keys the BrowserContext we lazy-create on first tool call.
+// Mint a ticket + sessionId, then pre-warm: eagerly open the BrowserContext
+// and navigate it to opper.ai so the viewport pane is already showing the
+// homepage by the time the agent says "hi". The agent's instructions tell
+// it the viewport is loaded, so it greets from there rather than burning
+// its first turn on a navigate().
+//
+// Pre-warm failure is non-fatal — the tour still works with a blank
+// viewport; the agent will navigate on its own when asked.
+const PRE_WARM_URL = "https://opper.ai/";
+
 app.post("/api/realtime/session", async (_req: Request, res: Response) => {
   try {
     const sessionId = randomUUID();
@@ -465,7 +473,21 @@ app.post("/api/realtime/session", async (_req: Request, res: Response) => {
     console.log(
       `  Minted ticket: sessionId=${sessionId.slice(0, 8)}…, expires ${ticket.expiresAt}`,
     );
-    res.json({ ...ticket, sessionId });
+
+    let initialScreenshot: string | undefined;
+    let initialUrl: string | undefined;
+    try {
+      const page = await browserPool.getPage(sessionId);
+      await page.goto(PRE_WARM_URL, { waitUntil: "domcontentloaded", timeout: 15000 });
+      await dismissCookieBanner(page);
+      initialScreenshot = await screenshotJpeg(page);
+      initialUrl = PRE_WARM_URL;
+      console.log(`  Pre-warmed ${PRE_WARM_URL} for ${sessionId.slice(0, 8)}…`);
+    } catch (err) {
+      console.warn(`  Pre-warm failed (session will start blank): ${(err as Error).message}`);
+    }
+
+    res.json({ ...ticket, sessionId, initialScreenshot, initialUrl });
   } catch (err) {
     console.error("  Mint failed:", err);
     res.status(500).json({ error: String(err) });
