@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Opper Tour</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Wix+Madefor+Display:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background: oklch(1 0 0);
+      --foreground: oklch(0.2938 0.0414 248.11);
+      --card: oklch(1 0 0);
+      --muted: oklch(0.97 0 0);
+      --muted-foreground: oklch(0.45 0 0);
+      --border: oklch(0.922 0 0);
+      --primary: oklch(0.205 0 0);
+      --primary-foreground: oklch(0.985 0 0);
+      --ring: oklch(0.708 0 0);
+      --radius: 0.625rem;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --background: oklch(0.252 0 102.07);
+        --foreground: oklch(0.9881 0 102.07);
+        --card: oklch(0.23 0 0);
+        --muted: oklch(0.30 0 0);
+        --muted-foreground: oklch(0.72 0 0);
+        --border: oklch(0.35 0 0);
+        --primary: oklch(0.9881 0 102.07);
+        --primary-foreground: oklch(0.252 0 102.07);
+        --ring: oklch(0.556 0 0);
+      }
+    }
+    html, body { background: var(--background); color: var(--foreground); }
+    body { font-family: 'Wix Madefor Display', system-ui, -apple-system, sans-serif; }
+    .chat-scroll::-webkit-scrollbar { width: 6px; }
+    .chat-scroll::-webkit-scrollbar-track { background: transparent; }
+    .chat-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    select, textarea, input, button { font-family: inherit; }
+    .field {
+      background: var(--card);
+      color: var(--foreground);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      transition: border-color 150ms ease, box-shadow 150ms ease;
+    }
+    .field:hover { border-color: oklch(from var(--border) calc(l - 0.05) c h); }
+    .field:focus-visible { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px oklch(from var(--ring) l c h / 0.25); }
+    .btn-primary {
+      background: var(--primary);
+      color: var(--primary-foreground);
+      border-radius: var(--radius);
+      transition: opacity 150ms ease, transform 80ms ease;
+    }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-primary:active { transform: translateY(1px); }
+    .btn-ghost {
+      background: var(--muted);
+      color: var(--muted-foreground);
+      border-radius: var(--radius);
+      transition: background-color 150ms ease, color 150ms ease;
+    }
+    .btn-ghost:hover { color: var(--foreground); }
+    .recording { animation: recPulse 1.6s ease-in-out infinite; }
+    @keyframes recPulse {
+      0%, 100% { box-shadow: 0 0 0 0 oklch(from var(--foreground) l c h / 0.18); }
+      50%      { box-shadow: 0 0 0 10px oklch(from var(--foreground) l c h / 0); }
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    .fade-in { animation: fadeIn 180ms ease-out; }
+    .status-dot { width: 6px; height: 6px; border-radius: 999px; background: var(--muted-foreground); display: inline-block; }
+    .status-dot.live { background: oklch(0.65 0.18 145); box-shadow: 0 0 0 3px oklch(0.65 0.18 145 / 0.18); }
+
+    /* Viewport pane — the visual half of the tour. The Playwright server
+       sends a fresh JPEG after every tool call and we crossfade between
+       frames so the page changes feel like a real browser, not a slideshow. */
+    .viewport-shell {
+      position: relative;
+      background: oklch(from var(--muted) calc(l - 0.04) c h);
+      border-left: 1px solid var(--border);
+      overflow: hidden;
+    }
+    .viewport-img {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: contain;
+      background: var(--background);
+      transition: opacity 220ms ease;
+      opacity: 0;
+    }
+    .viewport-img.visible { opacity: 1; }
+    .viewport-empty {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 14px; padding: 32px;
+      color: var(--muted-foreground); text-align: center;
+    }
+    .viewport-empty.hidden { display: none; }
+    .url-badge {
+      position: absolute; top: 12px; left: 12px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 5px 12px;
+      font-size: 11px;
+      color: var(--muted-foreground);
+      max-width: calc(100% - 24px);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      opacity: 0; transition: opacity 200ms ease;
+      pointer-events: none;
+    }
+    .url-badge.visible { opacity: 1; }
+    .url-badge .dot {
+      display: inline-block; width: 6px; height: 6px; border-radius: 999px;
+      background: oklch(0.65 0.18 145);
+      margin-right: 8px; vertical-align: middle;
+    }
+  </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+  <!-- LANDING -->
+  <div id="landing" class="flex-1 flex flex-col items-center justify-center px-4 overflow-y-auto py-10">
+    <div class="w-full max-w-md fade-in text-center">
+      <header class="mb-6 flex flex-col items-center gap-3">
+        <div class="flex items-center justify-center" style="width:48px;height:48px;border-radius:999px;background:var(--muted);color:var(--foreground)">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9"/>
+            <path d="M3.6 9h16.8"/>
+            <path d="M3.6 15h16.8"/>
+            <path d="M12 3a14 14 0 0 1 0 18"/>
+            <path d="M12 3a14 14 0 0 0 0 18"/>
+          </svg>
+        </div>
+        <h1 class="text-3xl md:text-4xl font-bold tracking-tight">Opper Tour</h1>
+        <p class="text-sm" style="color:var(--muted-foreground);max-width:340px;line-height:1.5">
+          A live, voice-led walkthrough of Opper's web pages. Ask questions; the guide will navigate, scroll, and highlight as it talks.
+        </p>
+      </header>
+
+      <button onclick="startSession()" class="btn-primary w-full px-4 py-3 text-sm font-medium">
+        Start the tour
+      </button>
+
+      <p class="text-xs mt-4" style="color:var(--muted-foreground)">
+        Mic + speakers recommended
+      </p>
+    </div>
+  </div>
+
+  <!-- SESSION -->
+  <div id="session" class="flex-1 flex flex-col hidden min-h-0">
+    <header class="flex items-center justify-between px-5 py-3 border-b" style="border-color:var(--border);background:var(--background)">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <span id="statusDot" class="status-dot"></span>
+        <div class="min-w-0">
+          <div class="text-sm font-semibold tracking-tight">Opper Tour</div>
+          <div id="statusText" class="text-xs truncate" style="color:var(--muted-foreground)">Connecting…</div>
+        </div>
+      </div>
+      <button onclick="endSession()" class="btn-ghost px-3 py-1.5 text-xs font-medium">End</button>
+    </header>
+
+    <!-- Two-pane body: transcript left, browser viewport right -->
+    <main class="flex-1 flex min-h-0 overflow-hidden">
+      <!-- Left: voice chat -->
+      <section class="flex flex-col min-h-0" style="flex: 0 0 40%; max-width: 480px">
+        <div class="flex-1 overflow-y-auto chat-scroll min-h-0" id="chatArea">
+          <div class="px-4 py-5 space-y-3" id="messages"></div>
+        </div>
+        <footer class="border-t px-4 py-3" style="border-color:var(--border);background:var(--background)">
+          <div class="flex gap-2 items-end">
+            <button
+              id="micBtn"
+              onclick="toggleMic()"
+              class="btn-ghost p-2.5 flex-shrink-0"
+              title="Toggle mic (Space)"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-14 0m7 0v4m0 4h.01M12 3a3 3 0 00-3 3v4a3 3 0 006 0V6a3 3 0 00-3-3z"/>
+              </svg>
+            </button>
+            <textarea id="textInput" placeholder="Type a question…" rows="1"
+              class="field flex-1 px-3 py-2.5 text-sm resize-none"
+              style="max-height:100px"
+            ></textarea>
+            <button onclick="sendText()" class="btn-primary p-2.5 flex-shrink-0" title="Send (Enter)">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7"/>
+              </svg>
+            </button>
+          </div>
+        </footer>
+      </section>
+
+      <!-- Right: browser viewport -->
+      <section class="viewport-shell flex-1 min-h-0">
+        <img id="viewport" class="viewport-img" alt="Tour viewport" />
+        <div id="viewportEmpty" class="viewport-empty">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="16" rx="2"/>
+            <path d="M3 9h18"/>
+            <circle cx="6.5" cy="6.5" r="0.5" fill="currentColor"/>
+            <circle cx="9" cy="6.5" r="0.5" fill="currentColor"/>
+            <circle cx="11.5" cy="6.5" r="0.5" fill="currentColor"/>
+          </svg>
+          <div style="font-size:13px;max-width:280px;line-height:1.5">
+            The browser pane will fill in when the guide starts navigating Opper's pages.
+          </div>
+        </div>
+        <div id="urlBadge" class="url-badge"><span class="dot"></span><span id="urlText"></span></div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    // ── State ────────────────────────────────────────────────────────────
+    let ws = null;
+    let sessionId = null;        // OUR uuid for the BrowserContext on the server
+    let audioContext = null;
+    let micStream = null;
+    let micProcessor = null;
+    let micSource = null;
+    let micActive = false;
+    let playbackQueue = [];
+    let isPlaying = false;
+    let currentSource = null;
+    let inputSampleRate = 24000;
+    let outputSampleRate = 24000;
+
+    const landing = document.getElementById("landing");
+    const sessionEl = document.getElementById("session");
+    const messages = document.getElementById("messages");
+    const chatArea = document.getElementById("chatArea");
+    const textInput = document.getElementById("textInput");
+    const micBtn = document.getElementById("micBtn");
+    const statusText = document.getElementById("statusText");
+    const statusDot = document.getElementById("statusDot");
+    const viewport = document.getElementById("viewport");
+    const viewportEmpty = document.getElementById("viewportEmpty");
+    const urlBadge = document.getElementById("urlBadge");
+    const urlText = document.getElementById("urlText");
+
+    // ── Helpers ──────────────────────────────────────────────────────────
+    function setStatus(t, live) {
+      statusText.textContent = t;
+      if (statusDot) statusDot.classList.toggle("live", !!live);
+    }
+    function escapeHtml(t) { const d = document.createElement("div"); d.textContent = t; return d.innerHTML; }
+    function scrollDown() { requestAnimationFrame(() => { chatArea.scrollTop = chatArea.scrollHeight; }); }
+
+    function addMessage(role, content) {
+      const el = document.createElement("div");
+      el.className = "flex gap-3 fade-in" + (role === "user" ? " justify-end" : "");
+      if (role === "user") {
+        el.innerHTML = `<div class="px-3.5 py-2.5 max-w-[80%]" style="background:var(--primary);color:var(--primary-foreground);border-radius:var(--radius);border-top-right-radius:4px"><p class="text-sm leading-relaxed">${escapeHtml(content)}</p></div>`;
+      } else if (role === "assistant") {
+        el.innerHTML = `<div class="max-w-[80%]"><div class="px-3.5 py-2.5" style="background:var(--muted);color:var(--foreground);border-radius:var(--radius);border-top-left-radius:4px"><p class="text-sm leading-relaxed">${escapeHtml(content)}</p></div></div>`;
+      } else if (role === "transcript") {
+        el.innerHTML = `<div class="w-full text-center"><span class="text-xs italic" style="color:var(--muted-foreground)">You: "${escapeHtml(content)}"</span></div>`;
+      } else {
+        el.innerHTML = `<div class="w-full text-center"><span class="text-xs px-3 py-1" style="background:var(--muted);color:var(--muted-foreground);border-radius:999px">${escapeHtml(content)}</span></div>`;
+      }
+      messages.appendChild(el);
+      scrollDown();
+    }
+
+    // Streaming text accumulator for assistant transcription
+    let streamEl = null;
+    let streamText = "";
+    function appendStreamDelta(delta) {
+      if (!streamEl) {
+        const wrapper = document.createElement("div");
+        wrapper.className = "flex gap-3 fade-in";
+        wrapper.innerHTML = `<div class="max-w-[80%]"><div class="px-3.5 py-2.5" style="background:var(--muted);color:var(--foreground);border-radius:var(--radius);border-top-left-radius:4px"><p class="stream-text text-sm leading-relaxed"></p></div></div>`;
+        messages.appendChild(wrapper);
+        streamEl = wrapper.querySelector(".stream-text");
+      }
+      streamText += delta;
+      streamEl.textContent = streamText;
+      scrollDown();
+    }
+    function endStream() { streamEl = null; streamText = ""; }
+
+    // ── Viewport ────────────────────────────────────────────────────────
+    // Each server tool call returns a JPEG screenshot; we render it into
+    // <img id="viewport"> with a crossfade. The URL badge follows navigate().
+    function showScreenshot(b64) {
+      if (!b64) return;
+      const onload = () => {
+        viewportEmpty.classList.add("hidden");
+        viewport.classList.add("visible");
+        viewport.removeEventListener("load", onload);
+      };
+      viewport.addEventListener("load", onload);
+      viewport.src = "data:image/jpeg;base64," + b64;
+    }
+    function showUrl(url) {
+      urlText.textContent = url;
+      urlBadge.classList.add("visible");
+    }
+
+    // ── Audio: chunked base64 + downsample (ported from brainstorm-time) ─
+    function uint8ToBase64(bytes) {
+      let bin = "";
+      for (let i = 0; i < bytes.length; i += 8192) {
+        const chunk = bytes.subarray(i, i + 8192);
+        for (let j = 0; j < chunk.length; j++) bin += String.fromCharCode(chunk[j]);
+      }
+      return btoa(bin);
+    }
+    function downsample(f32, srcRate, dstRate) {
+      if (srcRate === dstRate) return f32;
+      const ratio = srcRate / dstRate;
+      const len = Math.floor(f32.length / ratio);
+      const out = new Float32Array(len);
+      for (let i = 0; i < len; i++) {
+        const idx = i * ratio;
+        const lo = Math.floor(idx);
+        const hi = Math.min(lo + 1, f32.length - 1);
+        const frac = idx - lo;
+        out[i] = f32[lo] * (1 - frac) + f32[hi] * frac;
+      }
+      return out;
+    }
+
+    async function playAudioChunk(b64) {
+      playbackQueue.push(b64);
+      if (!isPlaying) drainPlayback();
+    }
+
+    async function drainPlayback() {
+      if (playbackQueue.length === 0) { isPlaying = false; return; }
+      isPlaying = true;
+      const b64 = playbackQueue.shift();
+      try {
+        if (!audioContext) audioContext = new AudioContext();
+        if (audioContext.state === "suspended") await audioContext.resume();
+        const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+        const pcm16 = new Int16Array(bytes.buffer);
+        const f32 = new Float32Array(pcm16.length);
+        for (let i = 0; i < pcm16.length; i++) f32[i] = pcm16[i] / 32768;
+        const buf = audioContext.createBuffer(1, f32.length, outputSampleRate);
+        buf.copyToChannel(f32, 0);
+        const src = audioContext.createBufferSource();
+        src.buffer = buf;
+        src.connect(audioContext.destination);
+        currentSource = src;
+        src.onended = () => { currentSource = null; drainPlayback(); };
+        src.start();
+      } catch (e) {
+        console.warn("playback error:", e);
+        drainPlayback();
+      }
+    }
+
+    function stopPlayback() {
+      playbackQueue = [];
+      isPlaying = false;
+      if (currentSource) {
+        try { currentSource.onended = null; currentSource.stop(); } catch {}
+        currentSource = null;
+      }
+    }
+
+    // ── Mic ──────────────────────────────────────────────────────────────
+    async function toggleMic() { if (micActive) stopMic(); else await startMic(); }
+
+    async function startMic() {
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({
+          audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+        });
+        if (!audioContext) audioContext = new AudioContext();
+        if (audioContext.state === "suspended") await audioContext.resume();
+
+        const nativeRate = audioContext.sampleRate;
+        micSource = audioContext.createMediaStreamSource(micStream);
+        micProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+
+        micProcessor.onaudioprocess = (e) => {
+          if (!micActive || !ws || ws.readyState !== WebSocket.OPEN) return;
+          const raw = e.inputBuffer.getChannelData(0);
+          const ds = downsample(raw, nativeRate, inputSampleRate);
+          const pcm16 = new Int16Array(ds.length);
+          for (let i = 0; i < ds.length; i++) {
+            pcm16[i] = Math.max(-32768, Math.min(32767, Math.round(ds[i] * 32768)));
+          }
+          const b64 = uint8ToBase64(new Uint8Array(pcm16.buffer));
+          ws.send(JSON.stringify({ type: "audio.append", audio: b64 }));
+        };
+
+        micSource.connect(micProcessor);
+        micProcessor.connect(audioContext.destination);
+        micActive = true;
+        micBtn.classList.remove("btn-ghost");
+        micBtn.classList.add("btn-primary", "recording");
+        setStatus("Listening…", true);
+      } catch (err) {
+        console.error("mic error:", err);
+        addMessage("system", "Microphone access denied — use text input.");
+      }
+    }
+
+    function stopMic() {
+      micActive = false;
+      if (micProcessor) { micProcessor.disconnect(); micProcessor = null; }
+      if (micSource) { micSource.disconnect(); micSource = null; }
+      if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+      micBtn.classList.remove("btn-primary", "recording");
+      micBtn.classList.add("btn-ghost");
+      setStatus("Connected", true);
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "audio.commit" }));
+      }
+    }
+
+    // ── Text ────────────────────────────────────────────────────────────
+    function sendText() {
+      const t = textInput.value.trim();
+      if (!t || !ws || ws.readyState !== WebSocket.OPEN) return;
+      addMessage("user", t);
+      textInput.value = "";
+      ws.send(JSON.stringify({ type: "text.input", text: t }));
+      ws.send(JSON.stringify({ type: "response.create" }));
+    }
+
+    textInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendText(); }
+    });
+
+    // ── Session lifecycle ───────────────────────────────────────────────
+    async function startSession() {
+      landing.classList.add("hidden");
+      sessionEl.classList.remove("hidden");
+      messages.innerHTML = "";
+      setStatus("Minting ticket…");
+
+      let ticket;
+      try {
+        const resp = await fetch("/api/realtime/session", { method: "POST" });
+        if (!resp.ok) {
+          const body = await resp.json().catch(() => ({ error: `mint ${resp.status}` }));
+          throw new Error(body.error || `mint ${resp.status}`);
+        }
+        ticket = await resp.json();
+        sessionId = ticket.sessionId;
+        console.log("[ticket] minted, sessionId", sessionId, "expires", ticket.expiresAt);
+      } catch (err) {
+        setStatus("Failed to mint ticket");
+        addMessage("system", "Could not start the tour: " + err.message);
+        return;
+      }
+
+      setStatus("Connecting…");
+      // Ticket carried in subprotocol header — never in URL, query string,
+      // or access logs. Same pattern as brainstorm-time; see Opper's
+      // realtime docs for the security rationale.
+      ws = new WebSocket(ticket.wsBaseUrl, [`opper-ticket.${ticket.clientSecret}`]);
+
+      ws.onopen = () => {
+        console.log("[ws] open — direct browser → Opper");
+        setStatus("Connected, configuring session…");
+        ws.send(JSON.stringify({ type: "session.start", config: {} }));
+      };
+
+      ws.onmessage = (evt) => {
+        try {
+          handleServerEvent(JSON.parse(evt.data));
+        } catch (err) {
+          console.warn("[ws] parse error:", err);
+        }
+      };
+
+      ws.onclose = (e) => {
+        console.log("[ws] closed", e.code, e.reason);
+        setStatus("Disconnected");
+        if (!e.wasClean) addMessage("system", "Connection lost.");
+      };
+
+      ws.onerror = (err) => {
+        console.error("[ws] error:", err);
+        setStatus("Error");
+      };
+    }
+
+    async function handleServerEvent(msg) {
+      const t = msg.type || "";
+      switch (t) {
+        case "session.started":
+          inputSampleRate = msg.input_sample_rate || msg.sample_rate || 24000;
+          outputSampleRate = msg.output_sample_rate || inputSampleRate;
+          setStatus("Connected — say hi or click the mic", true);
+          addMessage("system", "Tour ready");
+          startMic();
+          return;
+
+        case "audio.delta":
+          if (msg.audio) playAudioChunk(msg.audio);
+          return;
+
+        case "text.delta":
+          appendStreamDelta(msg.delta || "");
+          return;
+
+        case "transcript.committed":
+          addMessage("transcript", msg.transcript || "");
+          return;
+
+        case "speech.started":
+          stopPlayback();
+          endStream();
+          return;
+
+        case "response.completed":
+        case "response.done":
+          endStream();
+          return;
+
+        case "tool.call": {
+          // POST the call to /api/tools/:name with our sessionId, get back
+          // { result, screenshot, sendImage? }. We always render the screenshot
+          // in the viewport pane locally; the model only receives the text
+          // `result` via tool.result. When sendImage is true (today only for
+          // the `screenshot` tool) we additionally fire an `image.input`
+          // event before tool.result so the model gets the image via the
+          // image.input pathway. See server.ts for the rationale.
+          const args = typeof msg.tool_arguments === "string"
+            ? JSON.parse(msg.tool_arguments)
+            : msg.tool_arguments || {};
+          try {
+            const r = await fetch(`/api/tools/${encodeURIComponent(msg.tool_name)}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ sessionId, ...args }),
+            });
+            const toolResult = await r.json();
+            if (toolResult.screenshot) showScreenshot(toolResult.screenshot);
+            if (msg.tool_name === "navigate" && args.url) showUrl(args.url);
+
+            // Image-to-model handoff — only when the server flagged it
+            // (currently only the `screenshot` tool). Sent before tool.result
+            // so the image is in the conversation when the model's
+            // post-tool-call response is generated.
+            //
+            // The image.input event is gated by opper-ai/opper#2509. Until
+            // that ships, the server will reply with an `error` event we
+            // suppress in the error case below — the tour still works,
+            // the agent just won't actually see the screenshot yet.
+            if (toolResult.sendImage && toolResult.screenshot) {
+              ws.send(JSON.stringify({
+                type: "image.input",
+                image_url: "data:image/jpeg;base64," + toolResult.screenshot,
+                image_detail: "auto",
+                text: "Screenshot of the page currently in the tour viewport.",
+              }));
+            }
+
+            // Strip non-text fields before sending back to Opper — they're
+            // display-only or browser-only.
+            const { screenshot, sendImage, ...resultForModel } = toolResult;
+            ws.send(JSON.stringify({
+              type: "tool.result",
+              tool_call_id: msg.tool_call_id,
+              tool_result: resultForModel,
+            }));
+          } catch (err) {
+            console.error("tool failed:", err);
+            ws.send(JSON.stringify({
+              type: "tool.result",
+              tool_call_id: msg.tool_call_id,
+              tool_result: { result: "Tool failed: " + err.message },
+            }));
+          }
+          return;
+        }
+
+        case "session.terminating":
+          addMessage("system", `Session ending: ${msg.error?.code || "unknown"} — ${msg.error?.message || ""}`);
+          return;
+
+        case "error": {
+          const m = msg.message || msg.error?.message || msg.error || "unknown";
+          // Filter cosmetic errors that don't change the user-visible state.
+          // The image-related entries cover the window before opper-ai/opper#2509
+          // ships and image.input is rejected as an unknown event / unsupported.
+          if (typeof m === "string") {
+            const lower = m.toLowerCase();
+            if (lower.includes("cancel") || lower.includes("buffer too small") ||
+                lower.includes("not found in conversation") || lower.includes("tool call id") ||
+                lower.includes("image input") || lower.includes("image.input") ||
+                lower.includes("unknown event") || lower.includes("active response")) {
+              console.warn("[ws] suppressed error:", m);
+              return;
+            }
+          }
+          addMessage("system", "Error: " + m);
+          return;
+        }
+      }
+    }
+
+    function endSession() {
+      if (sessionId) {
+        // Fire-and-forget — server reaper would catch this anyway, but
+        // an explicit beacon frees the BrowserContext immediately.
+        try {
+          navigator.sendBeacon(
+            "/api/session/end",
+            new Blob([JSON.stringify({ sessionId })], { type: "application/json" }),
+          );
+        } catch {}
+        sessionId = null;
+      }
+      if (ws) { ws.close(); ws = null; }
+      stopMic();
+      stopPlayback();
+      if (audioContext) { audioContext.close(); audioContext = null; }
+      viewport.classList.remove("visible");
+      viewportEmpty.classList.remove("hidden");
+      urlBadge.classList.remove("visible");
+      sessionEl.classList.add("hidden");
+      landing.classList.remove("hidden");
+    }
+
+    // Reap the server-side BrowserContext on tab close. Same call as endSession
+    // but defensive: works even if the user just refreshes or closes the tab.
+    window.addEventListener("beforeunload", () => {
+      if (!sessionId) return;
+      try {
+        navigator.sendBeacon(
+          "/api/session/end",
+          new Blob([JSON.stringify({ sessionId })], { type: "application/json" }),
+        );
+      } catch {}
+    });
+
+    // Spacebar toggles mic when not typing
+    document.addEventListener("keydown", (e) => {
+      if (sessionEl.classList.contains("hidden")) return;
+      if (document.activeElement === textInput) return;
+      if (e.code === "Space") { e.preventDefault(); toggleMic(); }
+    });
+  </script>
+</body>
+</html>

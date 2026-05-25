@@ -50,3 +50,7 @@ examples/chatbot-openresponses/public/media/
 examples/brainstorm-time/public/media/
 **/output/
 uv.lock
+
+# Local design notes for opper-tour — stay out of the published example
+examples/opper-tour/PHASES.md
+examples/opper-tour/PLAN.md

@@ -1,0 +1,20 @@
+{
+  "name": "opper-tour",
+  "version": "0.1.0",
+  "description": "Realtime voice agent that walks you through Opper's web properties by driving a headless Chromium and streaming screenshots back to the browser",
+  "type": "module",
+  "scripts": {
+    "start": "tsx server.ts",
+    "postinstall": "playwright install chromium"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "opperai": "^4.0.0-beta.2",
+    "playwright": "^1.49.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.6.0"
+  }
+}
