@@ -149,6 +149,72 @@ async function screenshotJpeg(page: Page): Promise<string> {
   return buf.toString("base64");
 }
 
+/**
+ * Best-effort cookie-banner dismiss. Most banners persist their choice via
+ * localStorage/cookies, so once we click on first navigation the BrowserContext
+ * stays clean for the rest of the session. Fail-silent: if no banner is found
+ * within a short timeout, the tour keeps going.
+ *
+ * Candidates are ordered: opper.ai's own banner first, then the common
+ * third-party libraries, then a generic role/text fallback.
+ */
+async function dismissCookieBanner(page: Page): Promise<void> {
+  const candidates: Array<() => Promise<boolean>> = [
+    // opper.ai uses literally "Yes, Accept" / "No, Reject"
+    async () => {
+      const btn = page.getByRole("button", { name: /^yes,?\s*accept$/i }).first();
+      if (await btn.isVisible({ timeout: 400 })) {
+        await btn.click({ timeout: 1000 });
+        return true;
+      }
+      return false;
+    },
+    // OneTrust
+    async () => {
+      const btn = page.locator("#onetrust-accept-btn-handler");
+      if (await btn.isVisible({ timeout: 200 })) {
+        await btn.click({ timeout: 1000 });
+        return true;
+      }
+      return false;
+    },
+    // Cookiebot
+    async () => {
+      const btn = page.locator("#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll");
+      if (await btn.isVisible({ timeout: 200 })) {
+        await btn.click({ timeout: 1000 });
+        return true;
+      }
+      return false;
+    },
+    // CookieYes
+    async () => {
+      const btn = page.locator(".cky-btn-accept");
+      if (await btn.isVisible({ timeout: 200 })) {
+        await btn.click({ timeout: 1000 });
+        return true;
+      }
+      return false;
+    },
+    // Generic accept-button fallback
+    async () => {
+      const btn = page.getByRole("button", { name: /^(accept|allow|agree)(\s+all)?$/i }).first();
+      if (await btn.isVisible({ timeout: 200 })) {
+        await btn.click({ timeout: 1000 });
+        return true;
+      }
+      return false;
+    },
+  ];
+  for (const c of candidates) {
+    try {
+      if (await c()) return;
+    } catch {
+      // try the next one
+    }
+  }
+}
+
 type ToolResult = {
   result: string;
   screenshot?: string;
@@ -186,6 +252,7 @@ async function executeTool(
         screenshot,
       };
     }
+    await dismissCookieBanner(page);
     return { result: `Navigated to ${url}.`, screenshot: await screenshotJpeg(page) };
   }
 
