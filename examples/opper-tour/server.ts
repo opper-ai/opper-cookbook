@@ -44,11 +44,43 @@ const PUBLIC_WS_BASE =
   process.env.OPPER_WS_BASE ||
   OPPER_BASE_URL.replace(/^http/, "ws").replace(/\/$/, "");
 
-// Single-provider for this example. brainstorm-time shows the multi-provider
-// menu pattern; this example keeps the focus on Playwright + screenshot tools.
-const MODEL_ID = "openai/gpt-realtime-2";
-const VOICE = "marin";
-const REASONING_EFFORT = "low";
+// Model menu. brainstorm-time has the full multi-provider pattern with
+// voices + reasoning_effort selectors; opper-tour keeps it simpler — one
+// model picker on the landing page, the model's default voice. To add a
+// model: append here and update SUPPORTED_MODELS — no other code changes.
+//
+// Note on image input: the `screenshot` tool fires an `image.input` event
+// from the browser to the realtime WS. Opper normalizes this across
+// providers — same event name + JSON shape for OpenAI and Gemini Live —
+// and translates to each provider's native wire format underneath. The
+// only Gemini-specific constraint is that `image_url` must be a `data:`
+// URI rather than an `https://` URL, which we already satisfy (the tool
+// produces base64 JPEGs). `supportsImage` marks vision-capable models.
+type ModelEntry = {
+  id: string;
+  label: string;
+  defaultVoice: string;
+  supportsReasoningEffort: boolean;
+  supportsImage: boolean;
+};
+const MODELS: ModelEntry[] = [
+  {
+    id: "openai/gpt-realtime-2",
+    label: "OpenAI GPT Realtime 2",
+    defaultVoice: "marin",
+    supportsReasoningEffort: true,
+    supportsImage: true,
+  },
+  {
+    id: "gemini/gemini-3.1-flash-live-preview",
+    label: "Gemini 3.1 Flash Live",
+    defaultVoice: "Aoede",
+    supportsReasoningEffort: false,
+    supportsImage: true,
+  },
+];
+const DEFAULT_MODEL_ID = MODELS[0].id;
+const DEFAULT_REASONING_EFFORT = "low";
 
 if (!OPPER_API_KEY) {
   console.error("  OPPER_API_KEY is required");
@@ -384,21 +416,25 @@ async function safeScreenshot(page: Page): Promise<string | undefined> {
 // Ticket mint
 // ---------------------------------------------------------------------------
 
-async function mintRealtimeTicket(): Promise<{
+async function mintRealtimeTicket(model: ModelEntry): Promise<{
   clientSecret: string;
   expiresAt: string;
   wsBaseUrl: string;
 }> {
-  const config = {
-    model: MODEL_ID,
+  const config: Record<string, unknown> = {
+    model: model.id,
     instructions: TOUR_INSTRUCTIONS,
-    voice: VOICE,
-    reasoning_effort: REASONING_EFFORT,
+    voice: model.defaultVoice,
     turn_detection: { type: "server_vad", threshold: 0.5, silence_duration_ms: 500 },
     tools: realtimeTools,
     input_transcription: true,
     output_transcription: true,
   };
+  // reasoning_effort is only meaningful on models that advertise it.
+  // Sending it to a model that doesn't accept it gets rejected upstream.
+  if (model.supportsReasoningEffort) {
+    config.reasoning_effort = DEFAULT_REASONING_EFFORT;
+  }
   const body = { config, ttl_seconds: 60 };
 
   const resp = await fetch(`${OPPER_BASE_URL}/v3/realtime-sessions`, {
@@ -456,16 +492,55 @@ const app = express();
 app.use(express.json({ limit: "1mb" }));
 app.use(express.static(join(__dirname, "public")));
 
-// Mint a ticket + sessionId. The sessionId is *ours*, not Opper's — it
-// keys the BrowserContext we lazy-create on first tool call.
-app.post("/api/realtime/session", async (_req: Request, res: Response) => {
+// Mint a ticket + sessionId, then pre-warm: eagerly open the BrowserContext
+// and navigate it to opper.ai so the viewport pane is already showing the
+// homepage by the time the agent says "hi". The agent's instructions tell
+// it the viewport is loaded, so it greets from there rather than burning
+// its first turn on a navigate().
+//
+// Pre-warm failure is non-fatal — the tour still works with a blank
+// viewport; the agent will navigate on its own when asked.
+const PRE_WARM_URL = "https://opper.ai/";
+
+// Tiny config endpoint so the landing page can render the model dropdown
+// from the same source of truth used at mint time.
+app.get("/api/config", (_req: Request, res: Response) => {
+  res.json({
+    models: MODELS.map((m) => ({ id: m.id, label: m.label })),
+    defaultModel: DEFAULT_MODEL_ID,
+  });
+});
+
+app.post("/api/realtime/session", async (req: Request, res: Response) => {
   try {
     const sessionId = randomUUID();
-    const ticket = await mintRealtimeTicket();
+    const requestedModel = (req.body?.model as string | undefined) || DEFAULT_MODEL_ID;
+    const model = MODELS.find((m) => m.id === requestedModel);
+    if (!model) {
+      return res.status(400).json({
+        error: `model "${requestedModel}" not in allowlist`,
+        allowed: MODELS.map((m) => m.id),
+      });
+    }
+    const ticket = await mintRealtimeTicket(model);
     console.log(
-      `  Minted ticket: sessionId=${sessionId.slice(0, 8)}…, expires ${ticket.expiresAt}`,
+      `  Minted ticket: model=${model.id}, sessionId=${sessionId.slice(0, 8)}…, expires ${ticket.expiresAt}`,
     );
-    res.json({ ...ticket, sessionId });
+
+    let initialScreenshot: string | undefined;
+    let initialUrl: string | undefined;
+    try {
+      const page = await browserPool.getPage(sessionId);
+      await page.goto(PRE_WARM_URL, { waitUntil: "domcontentloaded", timeout: 15000 });
+      await dismissCookieBanner(page);
+      initialScreenshot = await screenshotJpeg(page);
+      initialUrl = PRE_WARM_URL;
+      console.log(`  Pre-warmed ${PRE_WARM_URL} for ${sessionId.slice(0, 8)}…`);
+    } catch (err) {
+      console.warn(`  Pre-warm failed (session will start blank): ${(err as Error).message}`);
+    }
+
+    res.json({ ...ticket, sessionId, initialScreenshot, initialUrl });
   } catch (err) {
     console.error("  Mint failed:", err);
     res.status(500).json({ error: String(err) });
