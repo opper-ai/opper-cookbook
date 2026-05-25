@@ -12,8 +12,9 @@ A Chrome-extension companion that lets a realtime voice agent drive the user's r
 
 | Phase | Cookbook | Vision | Auth | Sites |
 |---|---|---|---|---|
-| **0 — Foundation** | yes (new entry) | no — pre-baked site knowledge | no | opper.ai, docs.opper.ai |
-| **1 — Vision + full tour** | yes (extends Phase 0) | yes — screenshots fed back into model | no | opper.ai, docs.opper.ai |
+| **0 — Foundation** | yes (new entry) | no — pre-baked site knowledge | no | opper.ai, docs.opper.ai (per-URL allowlist) |
+| **0.5 — Wider reach + grounding tools** | yes (extends Phase 0) | partial — opt-in via `screenshot` tool (gated on platform image.input support) | no | full opper.ai, docs.opper.ai, github.com/opper-ai (domain allowlist) |
+| **1 — Vision-first + full tour** | yes (extends 0.5) | yes — every action's screenshot flows back into the model by default | no | same as 0.5 |
 | **2 — Real browser via extension** | no — separate repo + blog | yes | yes — user's real session | + platform.opper.ai |
 
 ---
@@ -111,15 +112,28 @@ The example's README explains: what it shows (realtime voice + server-side tools
 
 ---
 
-## Phase 1 — Vision + full tour (sketch)
+## Phase 0.5 — Wider reach + grounding tools
 
-Full design comes when we're ready to start. Same backbone as Phase 0; changes:
+Shipped 2026-05-25. Builds on Phase 0 by:
 
-- Every screenshot fed back into the realtime model as image input
-- Drop pre-baked site knowledge from the system prompt
-- Tool surface expands: `click(description)`, `type_text(target, text)`, `wait_for(condition)`, `scroll_to_text(text)`, `read_visible_text()`
-- Viewport polish: animated cursor that floats to target before click, highlight rings
-- Multi-tab support (agent can hold docs and marketing in parallel)
+- **Domain allowlist** instead of URL list. Hostname check covers `opper.ai`, `docs.opper.ai`, and `github.com/opper-ai`. Validated in `tour-knowledge.ts#isAllowedUrl()`. Agent can wander freely within those domains and follow links it discovers via the new tools.
+- **Real Opper messaging** baked into the system prompt: gateway positioning, Control Plane (Observe/Route/Steer/Guard/Comply), 3% vs 5.5% pricing, EU/Stockholm hosting, ZDR, OpenRouter comparison. Pulled verbatim from the live pages so the agent doesn't hallucinate fees or claims.
+- **`read_text` tool** — Playwright `page.innerText("main, article, body")`, truncated to ~4000 chars. The agent calls it when it needs to ground narration in what a specific page actually says.
+- **`screenshot` tool** — captures a JPEG and flags it for forwarding to the realtime model via an `image.input` event. The browser sends the event before the `tool.result` so the image is in conversation context when the model's post-tool-call response is generated.
+
+**Platform dependency.** The `image.input` event is gated on [opper-ai/opper#2509](https://github.com/opper-ai/opper/pull/2509). Until that PR merges, the realtime server rejects the event; the browser suppresses the error so the rest of the tour keeps working — the agent just won't actually *see* the screenshot until then. The tool is live now so it ships the moment the platform is ready.
+
+Stays in the same cookbook entry: `examples/opper-tour`.
+
+## Phase 1 — Vision-first + full tour (sketch)
+
+Full design comes when we're ready to start. Same backbone; changes versus 0.5:
+
+- **Every** screenshot (not just `screenshot`-tool calls) flows back into the model as image input — vision becomes the default, not opt-in.
+- Drop most pre-baked site knowledge from the system prompt; the agent navigates by what it sees.
+- Tool surface expands: `click(description)`, `type_text(target, text)`, `wait_for(condition)`, `scroll_to_text(text)`.
+- Viewport polish: animated cursor that floats to target before click, highlight rings.
+- Multi-tab support (agent can hold docs and marketing in parallel).
 
 Same cookbook entry — extends `examples/opper-tour`.
 

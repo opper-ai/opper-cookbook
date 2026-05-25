@@ -28,7 +28,7 @@ import { createServer as createNetServer } from "net";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import type { Page } from "playwright";
-import { URL_ALLOWLIST, TOUR_INSTRUCTIONS } from "./tour-knowledge.js";
+import { isAllowedUrl, TOUR_INSTRUCTIONS } from "./tour-knowledge.js";
 import * as browserPool from "./browser-pool.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -56,15 +56,10 @@ if (!OPPER_API_KEY) {
 }
 
 // ---------------------------------------------------------------------------
-// URL allowlist — normalized once. The agent passes a raw URL string;
-// we canonicalize (strip trailing slash) and exact-match against this set.
+// URL allowlist lives in tour-knowledge.ts (domain-based: opper.ai,
+// docs.opper.ai, github.com/opper-ai). Anything off-domain returns a
+// "not allowed" tool result before Playwright is touched.
 // ---------------------------------------------------------------------------
-
-const canonicalUrl = (u: string) => u.trim().replace(/\/+$/, "");
-const ALLOWED_URLS = new Set(URL_ALLOWLIST.map(canonicalUrl));
-function isAllowedUrl(u: string): boolean {
-  return ALLOWED_URLS.has(canonicalUrl(u));
-}
 
 // ---------------------------------------------------------------------------
 // Tool schemas — what the realtime agent sees. These are bound onto the
@@ -76,7 +71,7 @@ const realtimeTools = [
   {
     name: "navigate",
     description:
-      "Navigate to one of the allowlisted Opper URLs. The url must exactly match a URL from the site map in your instructions. Returns a fresh screenshot of the page.",
+      "Navigate to any page under opper.ai, docs.opper.ai, or github.com/opper-ai. Off-domain URLs are rejected. Returns a fresh screenshot of the page.",
     parameters: {
       type: "object",
       properties: {
@@ -131,6 +126,18 @@ const realtimeTools = [
       required: ["text"],
     },
   },
+  {
+    name: "read_text",
+    description:
+      "Return the visible text of the current page (truncated to ~4000 chars). Use when you need to ground your narration in what the page actually says, especially on pages you don't know well. Cheap and exact — prefer this over guessing.",
+    parameters: { type: "object", properties: {} },
+  },
+  {
+    name: "screenshot",
+    description:
+      "Send a fresh screenshot of the current page directly to YOU (the model) as image input. Use when you need to see layout, buttons, or images — not just the text. After calling, describe what you see to the user.",
+    parameters: { type: "object", properties: {} },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -142,7 +149,15 @@ async function screenshotJpeg(page: Page): Promise<string> {
   return buf.toString("base64");
 }
 
-type ToolResult = { result: string; screenshot?: string };
+type ToolResult = {
+  result: string;
+  screenshot?: string;
+  // When true, the browser will also forward the screenshot as an
+  // `image.input` event to the realtime WS so the model sees it.
+  // See PR https://github.com/opper-ai/opper/pull/2509 for the wire
+  // shape; this field is the trigger on the browser side.
+  sendImage?: boolean;
+};
 
 async function executeTool(
   name: string,
@@ -244,6 +259,47 @@ async function executeTool(
         screenshot: await safeScreenshot(page),
       };
     }
+  }
+
+  if (name === "read_text") {
+    // innerText respects CSS visibility and gives roughly what a human sees,
+    // unlike textContent which returns hidden + script content too. Limit
+    // to ~4000 chars so we don't blow the realtime context on a long page.
+    const MAX_CHARS = 4000;
+    try {
+      const text = await page.evaluate(() => {
+        const main = document.querySelector("main, article, [role='main']");
+        return (main instanceof HTMLElement ? main.innerText : document.body.innerText) || "";
+      });
+      const url = page.url();
+      const trimmed = text.length > MAX_CHARS ? text.slice(0, MAX_CHARS) + "\n…[truncated]" : text;
+      return {
+        result: `Text content of ${url}:\n\n${trimmed}`,
+        screenshot: await safeScreenshot(page),
+      };
+    } catch (err: unknown) {
+      return {
+        result: `Couldn't read text from this page: ${(err as Error).message}`,
+        screenshot: await safeScreenshot(page),
+      };
+    }
+  }
+
+  if (name === "screenshot") {
+    // The browser handles the actual image.input dispatch — we just capture
+    // the bytes and mark them for forwarding. The model receives the image
+    // out-of-band as a conversation item; the tool result it sees is the
+    // result string below.
+    const shot = await safeScreenshot(page);
+    if (!shot) {
+      return { result: "Couldn't capture a screenshot of the current page." };
+    }
+    return {
+      result:
+        "Screenshot of the current page sent to you as image input. Describe what you see to the user.",
+      screenshot: shot,
+      sendImage: true,
+    };
   }
 
   return { result: `Unknown tool: ${name}` };

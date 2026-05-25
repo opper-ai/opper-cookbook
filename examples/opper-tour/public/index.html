@@ -520,11 +520,13 @@
           return;
 
         case "tool.call": {
-          // All tools in this example are server-side. We POST the call to
-          // /api/tools/:name with our sessionId, get back { result, screenshot },
-          // render the screenshot in the viewport pane, and ship only the
-          // result string back to Opper — the screenshot stays in the browser
-          // because Opper doesn't need vision input in Phase 0.
+          // POST the call to /api/tools/:name with our sessionId, get back
+          // { result, screenshot, sendImage? }. We always render the screenshot
+          // in the viewport pane locally; the model only receives the text
+          // `result` via tool.result. When sendImage is true (today only for
+          // the `screenshot` tool) we additionally fire an `image.input`
+          // event before tool.result so the model gets the image via the
+          // image.input pathway. See server.ts for the rationale.
           const args = typeof msg.tool_arguments === "string"
             ? JSON.parse(msg.tool_arguments)
             : msg.tool_arguments || {};
@@ -537,8 +539,28 @@
             const toolResult = await r.json();
             if (toolResult.screenshot) showScreenshot(toolResult.screenshot);
             if (msg.tool_name === "navigate" && args.url) showUrl(args.url);
-            // Strip screenshot before sending back to Opper — it's display-only.
-            const { screenshot, ...resultForModel } = toolResult;
+
+            // Image-to-model handoff — only when the server flagged it
+            // (currently only the `screenshot` tool). Sent before tool.result
+            // so the image is in the conversation when the model's
+            // post-tool-call response is generated.
+            //
+            // The image.input event is gated by opper-ai/opper#2509. Until
+            // that ships, the server will reply with an `error` event we
+            // suppress in the error case below — the tour still works,
+            // the agent just won't actually see the screenshot yet.
+            if (toolResult.sendImage && toolResult.screenshot) {
+              ws.send(JSON.stringify({
+                type: "image.input",
+                image_url: "data:image/jpeg;base64," + toolResult.screenshot,
+                image_detail: "auto",
+                text: "Screenshot of the page currently in the tour viewport.",
+              }));
+            }
+
+            // Strip non-text fields before sending back to Opper — they're
+            // display-only or browser-only.
+            const { screenshot, sendImage, ...resultForModel } = toolResult;
             ws.send(JSON.stringify({
               type: "tool.result",
               tool_call_id: msg.tool_call_id,
@@ -562,11 +584,15 @@
         case "error": {
           const m = msg.message || msg.error?.message || msg.error || "unknown";
           // Filter cosmetic errors that don't change the user-visible state.
-          // Same allowlist as brainstorm-time.
+          // The image-related entries cover the window before opper-ai/opper#2509
+          // ships and image.input is rejected as an unknown event / unsupported.
           if (typeof m === "string") {
             const lower = m.toLowerCase();
             if (lower.includes("cancel") || lower.includes("buffer too small") ||
-                lower.includes("not found in conversation") || lower.includes("tool call id")) {
+                lower.includes("not found in conversation") || lower.includes("tool call id") ||
+                lower.includes("image input") || lower.includes("image.input") ||
+                lower.includes("unknown event")) {
+              console.warn("[ws] suppressed error:", m);
               return;
             }
           }
