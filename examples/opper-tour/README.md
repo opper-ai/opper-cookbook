@@ -4,6 +4,10 @@ A realtime voice agent that walks you through Opper's web properties by **drivin
 
 Currently at Phase 0.5 of a multi-phase project. See [`PHASES.md`](./PHASES.md) for the full roadmap (vision-driven navigation → real-browser-via-extension).
 
+## Demo
+
+https://github.com/user-attachments/assets/cf743441-c701-462d-94f4-07a64a8f2550
+
 ## What it shows
 
 - **Realtime voice + server-driven browser**. The voice agent's tool calls (`navigate`, `click`, `scroll`, `highlight`, `read_text`, `screenshot`) execute against a real Chromium instance running on the Node server via [Playwright](https://playwright.dev). Each tool returns a fresh JPEG screenshot that the browser renders in a viewport pane next to the chat.
