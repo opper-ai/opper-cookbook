@@ -259,18 +259,22 @@ const app = express();
 app.use(express.json());
 app.use(express.static(join(__dirname, "public")));
 
-app.post("/api/ask", async (req, res) => {
+// One endpoint per provider so the browser can fire all three in parallel
+// and paint each column the moment its provider finishes — no waiting on
+// the slowest. The shape of every response is the same ProviderResult JSON.
+const ASKERS: Record<string, (q: string, o: AskOptions) => Promise<ProviderResult>> = {
+  anthropic: askAnthropic,
+  openai: askOpenAI,
+  google: askGoogle,
+};
+
+app.post("/api/ask/:provider", async (req, res) => {
+  const asker = ASKERS[req.params.provider];
+  if (!asker) return res.status(404).json({ error: `unknown provider: ${req.params.provider}` });
   const question: string = (req.body?.question || "").toString().trim();
   if (!question) return res.status(400).json({ error: "question is required" });
   const opts: AskOptions = { compact: !!req.body?.compact };
-
-  const [anthropic, openai, google] = await Promise.all([
-    askAnthropic(question, opts),
-    askOpenAI(question, opts),
-    askGoogle(question, opts),
-  ]);
-
-  res.json({ anthropic, openai, google });
+  res.json(await asker(question, opts));
 });
 
 const PORT = await findPort(PREFERRED_PORT);

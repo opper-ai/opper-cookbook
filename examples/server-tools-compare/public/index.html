@@ -274,21 +274,26 @@
       const q = input.value.trim();
       if (!q) return;
       setLoading(true);
-      try {
-        const res = await fetch('/api/ask', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question: q, compact: compactToggle.checked }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'request failed');
-        renderProvider('anthropic', data.anthropic);
-        renderProvider('openai', data.openai);
-        renderProvider('google', data.google);
-      } catch (err) {
-        for (const p of ['anthropic', 'openai', 'google']) {
-          renderProvider(p, { error: err.message });
+      const payload = JSON.stringify({ question: q, compact: compactToggle.checked });
+      // Fan out: three independent requests; each column paints as soon
+      // as its provider finishes, so the fast one (often Google ~2s) shows
+      // up without waiting for the slow one (often OpenAI ~20s).
+      const tasks = ['anthropic', 'openai', 'google'].map(async (provider) => {
+        try {
+          const res = await fetch(`/api/ask/${provider}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload,
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+          renderProvider(provider, data);
+        } catch (err) {
+          renderProvider(provider, { error: err.message });
         }
+      });
+      try {
+        await Promise.all(tasks);
       } finally {
         setLoading(false);
       }
