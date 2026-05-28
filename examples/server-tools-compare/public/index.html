@@ -69,6 +69,7 @@
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: var(--radius);
+      display: flex; flex-direction: column;
     }
     .col-header {
       display: flex; align-items: center; gap: 8px;
@@ -88,12 +89,47 @@
       text-decoration-color: var(--border);
     }
     .col-body a:hover { text-decoration-color: var(--foreground); }
+    .col-section {
+      padding: 10px 14px;
+      border-top: 1px solid var(--border);
+      font-size: 12px;
+    }
+    .col-section-label {
+      font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+      color: var(--muted-foreground); margin-bottom: 6px;
+    }
+    .queries { display: flex; flex-wrap: wrap; gap: 4px; }
+    .query-chip {
+      background: var(--muted);
+      border-radius: 999px;
+      padding: 3px 9px;
+      font-size: 12px;
+      color: var(--foreground);
+    }
+    .citations { display: flex; flex-direction: column; gap: 6px; }
+    .citation {
+      display: flex; flex-direction: column; gap: 2px;
+      background: var(--muted);
+      border-radius: 6px;
+      padding: 6px 9px;
+    }
+    .citation a {
+      color: var(--foreground); font-size: 12px;
+      text-decoration: none;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .citation a:hover { text-decoration: underline; }
+    .citation-host {
+      font-size: 10px; color: var(--muted-foreground);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
     .col-meta {
       padding: 10px 14px;
       border-top: 1px solid var(--border);
       display: flex; gap: 14px; flex-wrap: wrap;
       font-size: 12px;
       color: var(--muted-foreground);
+      margin-top: auto;
     }
     .col-meta b { color: var(--foreground); font-weight: 600; }
     .error {
@@ -121,6 +157,13 @@
       0% { background-position: 200% 0; }
       100% { background-position: -200% 0; }
     }
+    .toggle {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-size: 12px; color: var(--muted-foreground);
+      cursor: pointer;
+      user-select: none;
+    }
+    .toggle input { accent-color: var(--foreground); }
   </style>
 </head>
 <body>
@@ -132,7 +175,7 @@
       </p>
     </header>
 
-    <form id="ask-form" class="mb-6 flex gap-2">
+    <form id="ask-form" class="mb-3 flex gap-2">
       <input
         id="question"
         type="text"
@@ -143,11 +186,17 @@
       <button id="ask" type="submit" class="btn-primary px-6 py-3 text-sm font-semibold">Ask</button>
     </form>
 
-    <div class="mb-6 flex flex-wrap gap-2" id="examples">
-      <button class="btn-ghost" data-q="Who is the current president of the United States?">US president?</button>
-      <button class="btn-ghost" data-q="Who won the most recent F1 race?">Most recent F1 winner</button>
-      <button class="btn-ghost" data-q="What's the latest news about Anthropic's Claude models?">Latest Claude news</button>
-      <button class="btn-ghost" data-q="What was the top tech headline today?">Top tech headline today</button>
+    <div class="mb-6 flex items-center justify-between flex-wrap gap-3">
+      <div class="flex flex-wrap gap-2" id="examples">
+        <button class="btn-ghost" data-q="Who is the current president of the United States?">US president?</button>
+        <button class="btn-ghost" data-q="Who won the most recent F1 race?">Most recent F1 winner</button>
+        <button class="btn-ghost" data-q="What's the latest news about Anthropic's Claude models?">Latest Claude news</button>
+        <button class="btn-ghost" data-q="What was the top tech headline today?">Top tech headline today</button>
+      </div>
+      <label class="toggle" title="Strip bandwidth-heavy payloads (search snippets, encrypted_content) but keep citation URLs">
+        <input type="checkbox" id="compact" />
+        <span>Compact response (<code>X-Opper-Compact-Response</code>)</span>
+      </label>
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="results">
@@ -158,6 +207,14 @@
           <span class="text-xs font-normal" style="color: var(--muted-foreground)">claude-sonnet-4-5</span>
         </div>
         <div class="col-body" data-slot="answer"><span style="color: var(--muted-foreground)">Ask a question to compare.</span></div>
+        <div class="col-section" data-slot="queries-section" hidden>
+          <div class="col-section-label">Queries</div>
+          <div class="queries" data-slot="queries"></div>
+        </div>
+        <div class="col-section" data-slot="citations-section" hidden>
+          <div class="col-section-label">Citations</div>
+          <div class="citations" data-slot="citations"></div>
+        </div>
         <div class="col-meta" data-slot="meta"></div>
       </section>
 
@@ -168,6 +225,14 @@
           <span class="text-xs font-normal" style="color: var(--muted-foreground)">gpt-5</span>
         </div>
         <div class="col-body" data-slot="answer"><span style="color: var(--muted-foreground)">Ask a question to compare.</span></div>
+        <div class="col-section" data-slot="queries-section" hidden>
+          <div class="col-section-label">Queries</div>
+          <div class="queries" data-slot="queries"></div>
+        </div>
+        <div class="col-section" data-slot="citations-section" hidden>
+          <div class="col-section-label">Citations</div>
+          <div class="citations" data-slot="citations"></div>
+        </div>
         <div class="col-meta" data-slot="meta"></div>
       </section>
 
@@ -178,6 +243,14 @@
           <span class="text-xs font-normal" style="color: var(--muted-foreground)">gemini-2.5-flash</span>
         </div>
         <div class="col-body" data-slot="answer"><span style="color: var(--muted-foreground)">Ask a question to compare.</span></div>
+        <div class="col-section" data-slot="queries-section" hidden>
+          <div class="col-section-label">Queries</div>
+          <div class="queries" data-slot="queries"></div>
+        </div>
+        <div class="col-section" data-slot="citations-section" hidden>
+          <div class="col-section-label">Citations</div>
+          <div class="citations" data-slot="citations"></div>
+        </div>
         <div class="col-meta" data-slot="meta"></div>
       </section>
     </div>
@@ -187,6 +260,7 @@
     const form = document.getElementById('ask-form');
     const input = document.getElementById('question');
     const askBtn = document.getElementById('ask');
+    const compactToggle = document.getElementById('compact');
 
     document.getElementById('examples').addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-q]');
@@ -204,7 +278,7 @@
         const res = await fetch('/api/ask', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question: q }),
+          body: JSON.stringify({ question: q, compact: compactToggle.checked }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'request failed');
@@ -213,7 +287,7 @@
         renderProvider('google', data.google);
       } catch (err) {
         for (const p of ['anthropic', 'openai', 'google']) {
-          renderProvider(p, { error: err.message, answer: '', citations: [], searches: 0, cost: null, ms: 0 });
+          renderProvider(p, { error: err.message });
         }
       } finally {
         setLoading(false);
@@ -232,6 +306,8 @@
             <div class="skeleton-line" style="width: 75%"></div>
             <div class="skeleton-line" style="width: 60%"></div>
           </div>`;
+        section.querySelector('[data-slot="queries-section"]').hidden = true;
+        section.querySelector('[data-slot="citations-section"]').hidden = true;
         section.querySelector('[data-slot="meta"]').innerHTML =
           '<span class="pulse"></span> running web_search&hellip;';
       }
@@ -241,17 +317,51 @@
       const section = document.querySelector(`[data-provider="${name}"]`);
       const answer = section.querySelector('[data-slot="answer"]');
       const meta = section.querySelector('[data-slot="meta"]');
+      const qSection = section.querySelector('[data-slot="queries-section"]');
+      const qList = section.querySelector('[data-slot="queries"]');
+      const cSection = section.querySelector('[data-slot="citations-section"]');
+      const cList = section.querySelector('[data-slot="citations"]');
 
       if (r.error) {
         answer.innerHTML = '';
+        qSection.hidden = true;
+        cSection.hidden = true;
         meta.innerHTML = `<div class="error">${escapeHtml(r.error)}</div>`;
         return;
       }
 
       answer.innerHTML = renderAnswer(r.answer || '(no text returned)');
+
+      const queries = r.queries || [];
+      if (queries.length) {
+        qSection.hidden = false;
+        qList.innerHTML = queries.map(q => `<span class="query-chip">${escapeHtml(q)}</span>`).join('');
+      } else {
+        qSection.hidden = true;
+      }
+
+      const citations = r.citations || [];
+      if (citations.length) {
+        cSection.hidden = false;
+        cList.innerHTML = citations.slice(0, 8).map(c => {
+          // Compact mode strips Google groundingChunk URIs (titles preserved);
+          // render those as plain text since there's nothing to link to.
+          const titleHtml = c.url
+            ? `<a href="${escapeAttr(c.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(c.title)}</a>`
+            : escapeHtml(c.title);
+          const host = c.url ? `<div class="citation-host">${escapeHtml(hostOf(c.url))}</div>` : '';
+          return `<div class="citation">${titleHtml}${host}</div>`;
+        }).join('');
+      } else {
+        cSection.hidden = true;
+      }
+
       meta.innerHTML = [
+        `<span><b>${queries.length}</b> search${queries.length === 1 ? '' : 'es'}</span>`,
+        `<span><b>${citations.length}</b> citation${citations.length === 1 ? '' : 's'}</span>`,
         `<span><b>${(r.ms / 1000).toFixed(1)}s</b></span>`,
         r.cost != null ? `<span><b>$${r.cost.toFixed(5)}</b></span>` : '',
+        `<span><b>${formatBytes(r.bytes)}</b></span>`,
       ].filter(Boolean).join('');
     }
 
@@ -262,6 +372,17 @@
       return escaped.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, title, url) =>
         `<a href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer">${title}</a>`
       );
+    }
+
+    function hostOf(url) {
+      try { return new URL(url).host; } catch { return url; }
+    }
+
+    function formatBytes(n) {
+      if (n == null) return '';
+      if (n < 1024) return `${n} B`;
+      if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+      return `${(n / 1024 / 1024).toFixed(2)} MB`;
     }
 
     function escapeHtml(s) {
