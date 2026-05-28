@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Server-side tools compare</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Wix+Madefor+Display:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background: oklch(1 0 0);
+      --foreground: oklch(0.2938 0.0414 248.11);
+      --card: oklch(1 0 0);
+      --muted: oklch(0.97 0 0);
+      --muted-foreground: oklch(0.45 0 0);
+      --border: oklch(0.922 0 0);
+      --primary: oklch(0.205 0 0);
+      --primary-foreground: oklch(0.985 0 0);
+      --ring: oklch(0.708 0 0);
+      --radius: 0.625rem;
+      --anthropic: oklch(0.62 0.16 35);
+      --openai: oklch(0.55 0.13 165);
+      --google: oklch(0.6 0.15 250);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --background: oklch(0.252 0 102.07);
+        --foreground: oklch(0.9881 0 102.07);
+        --card: oklch(0.23 0 0);
+        --muted: oklch(0.30 0 0);
+        --muted-foreground: oklch(0.72 0 0);
+        --border: oklch(0.35 0 0);
+        --primary: oklch(0.9881 0 102.07);
+        --primary-foreground: oklch(0.252 0 102.07);
+        --ring: oklch(0.556 0 0);
+      }
+    }
+    html, body { background: var(--background); color: var(--foreground); }
+    body { font-family: 'Wix Madefor Display', system-ui, -apple-system, sans-serif; }
+    .field {
+      background: var(--card);
+      color: var(--foreground);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      transition: border-color 150ms ease, box-shadow 150ms ease;
+    }
+    .field:hover { border-color: oklch(from var(--border) calc(l - 0.05) c h); }
+    .field:focus-visible { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px oklch(from var(--ring) l c h / 0.25); }
+    .btn-primary {
+      background: var(--primary);
+      color: var(--primary-foreground);
+      border-radius: var(--radius);
+      transition: opacity 150ms ease, transform 80ms ease;
+    }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-primary:active { transform: translateY(1px); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-ghost {
+      background: var(--muted);
+      color: var(--muted-foreground);
+      border-radius: var(--radius);
+      transition: background-color 150ms ease, color 150ms ease;
+      font-size: 12px;
+      padding: 4px 10px;
+    }
+    .btn-ghost:hover { color: var(--foreground); }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      display: flex; flex-direction: column;
+    }
+    .col-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600; font-size: 13px;
+    }
+    .col-swatch { width: 8px; height: 8px; border-radius: 2px; }
+    .col-body {
+      padding: 14px;
+      font-size: 14px; line-height: 1.55;
+      white-space: pre-wrap;
+      min-height: 80px;
+    }
+    .col-body a {
+      color: var(--foreground); text-decoration: underline; text-underline-offset: 2px;
+      text-decoration-color: var(--border);
+    }
+    .col-body a:hover { text-decoration-color: var(--foreground); }
+    .col-section {
+      padding: 10px 14px;
+      border-top: 1px solid var(--border);
+      font-size: 12px;
+    }
+    .col-section-label {
+      font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+      color: var(--muted-foreground); margin-bottom: 6px;
+    }
+    .queries { display: flex; flex-wrap: wrap; gap: 4px; }
+    .query-chip {
+      background: var(--muted);
+      border-radius: 999px;
+      padding: 3px 9px;
+      font-size: 12px;
+      color: var(--foreground);
+    }
+    .citations { display: flex; flex-direction: column; gap: 6px; }
+    .citation {
+      display: flex; flex-direction: column; gap: 2px;
+      background: var(--muted);
+      border-radius: 6px;
+      padding: 6px 9px;
+    }
+    .citation a {
+      color: var(--foreground); font-size: 12px;
+      text-decoration: none;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .citation a:hover { text-decoration: underline; }
+    .citation-host {
+      font-size: 10px; color: var(--muted-foreground);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .col-meta {
+      padding: 10px 14px;
+      border-top: 1px solid var(--border);
+      display: flex; gap: 14px; flex-wrap: wrap;
+      font-size: 12px;
+      color: var(--muted-foreground);
+      margin-top: auto;
+    }
+    .col-meta b { color: var(--foreground); font-weight: 600; }
+    .error {
+      padding: 14px;
+      font-size: 13px; color: oklch(0.55 0.18 25);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .pulse {
+      display: inline-block;
+      width: 8px; height: 8px; border-radius: 999px;
+      background: var(--muted-foreground);
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.3; }
+      50% { opacity: 1; }
+    }
+    .skeleton-line {
+      height: 12px; border-radius: 4px;
+      background: linear-gradient(90deg, var(--muted) 0%, oklch(from var(--muted) calc(l + 0.04) c h) 50%, var(--muted) 100%);
+      background-size: 200% 100%;
+      animation: shimmer 1.2s ease-in-out infinite;
+    }
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+    .toggle {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-size: 12px; color: var(--muted-foreground);
+      cursor: pointer;
+      user-select: none;
+    }
+    .toggle input { accent-color: var(--foreground); }
+  </style>
+</head>
+<body>
+  <div class="max-w-6xl mx-auto px-6 py-10">
+    <header class="mb-8">
+      <h1 class="text-3xl font-semibold mb-2">Server-side tools, side by side</h1>
+      <p class="text-sm" style="color: var(--muted-foreground); max-width: 64ch;">
+        One question, fanned out to Anthropic <code>web_search</code>, OpenAI <code>web_search</code>, and Google <code>googleSearch</code> through Opper's compat endpoints in parallel. No client-side tool loop &mdash; each provider runs its own search and returns the final answer plus citations.
+      </p>
+    </header>
+
+    <form id="ask-form" class="mb-3 flex gap-2">
+      <input
+        id="question"
+        type="text"
+        class="field flex-1 px-4 py-3 text-base"
+        placeholder="Ask anything that needs fresh info&hellip; e.g. 'Who won the most recent F1 race?'"
+        autocomplete="off"
+      />
+      <button id="ask" type="submit" class="btn-primary px-6 py-3 text-sm font-semibold">Ask</button>
+    </form>
+
+    <div class="mb-6 flex items-center justify-between flex-wrap gap-3">
+      <div class="flex flex-wrap gap-2" id="examples">
+        <button class="btn-ghost" data-q="Who is the current president of the United States?">US president?</button>
+        <button class="btn-ghost" data-q="Who won the most recent F1 race?">Most recent F1 winner</button>
+        <button class="btn-ghost" data-q="What's the latest news about Anthropic's Claude models?">Latest Claude news</button>
+        <button class="btn-ghost" data-q="What was the top tech headline today?">Top tech headline today</button>
+      </div>
+      <label class="toggle" title="Strip bandwidth-heavy payloads (search snippets, encrypted_content) but keep citation URLs">
+        <input type="checkbox" id="compact" />
+        <span>Compact response (<code>X-Opper-Compact-Response</code>)</span>
+      </label>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="results">
+      <section class="card" data-provider="anthropic">
+        <div class="col-header">
+          <span class="col-swatch" style="background: var(--anthropic)"></span>
+          Anthropic
+          <span class="text-xs font-normal" style="color: var(--muted-foreground)">claude-sonnet-4-5</span>
+        </div>
+        <div class="col-body" data-slot="answer"><span style="color: var(--muted-foreground)">Ask a question to compare.</span></div>
+        <div class="col-section" data-slot="queries-section" hidden>
+          <div class="col-section-label">Queries</div>
+          <div class="queries" data-slot="queries"></div>
+        </div>
+        <div class="col-section" data-slot="citations-section" hidden>
+          <div class="col-section-label">Citations</div>
+          <div class="citations" data-slot="citations"></div>
+        </div>
+        <div class="col-meta" data-slot="meta"></div>
+      </section>
+
+      <section class="card" data-provider="openai">
+        <div class="col-header">
+          <span class="col-swatch" style="background: var(--openai)"></span>
+          OpenAI
+          <span class="text-xs font-normal" style="color: var(--muted-foreground)">gpt-5</span>
+        </div>
+        <div class="col-body" data-slot="answer"><span style="color: var(--muted-foreground)">Ask a question to compare.</span></div>
+        <div class="col-section" data-slot="queries-section" hidden>
+          <div class="col-section-label">Queries</div>
+          <div class="queries" data-slot="queries"></div>
+        </div>
+        <div class="col-section" data-slot="citations-section" hidden>
+          <div class="col-section-label">Citations</div>
+          <div class="citations" data-slot="citations"></div>
+        </div>
+        <div class="col-meta" data-slot="meta"></div>
+      </section>
+
+      <section class="card" data-provider="google">
+        <div class="col-header">
+          <span class="col-swatch" style="background: var(--google)"></span>
+          Google
+          <span class="text-xs font-normal" style="color: var(--muted-foreground)">gemini-2.5-flash</span>
+        </div>
+        <div class="col-body" data-slot="answer"><span style="color: var(--muted-foreground)">Ask a question to compare.</span></div>
+        <div class="col-section" data-slot="queries-section" hidden>
+          <div class="col-section-label">Queries</div>
+          <div class="queries" data-slot="queries"></div>
+        </div>
+        <div class="col-section" data-slot="citations-section" hidden>
+          <div class="col-section-label">Citations</div>
+          <div class="citations" data-slot="citations"></div>
+        </div>
+        <div class="col-meta" data-slot="meta"></div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('ask-form');
+    const input = document.getElementById('question');
+    const askBtn = document.getElementById('ask');
+    const compactToggle = document.getElementById('compact');
+
+    document.getElementById('examples').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-q]');
+      if (!btn) return;
+      input.value = btn.dataset.q;
+      form.requestSubmit();
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const q = input.value.trim();
+      if (!q) return;
+      setLoading(true);
+      const payload = JSON.stringify({ question: q, compact: compactToggle.checked });
+      // Fan out: three independent requests; each column paints as soon
+      // as its provider finishes, so the fast one (often Google ~2s) shows
+      // up without waiting for the slow one (often OpenAI ~20s).
+      const tasks = ['anthropic', 'openai', 'google'].map(async (provider) => {
+        try {
+          const res = await fetch(`/api/ask/${provider}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload,
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+          renderProvider(provider, data);
+        } catch (err) {
+          renderProvider(provider, { error: err.message });
+        }
+      });
+      try {
+        await Promise.all(tasks);
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    function setLoading(on) {
+      askBtn.disabled = on;
+      askBtn.textContent = on ? 'Asking…' : 'Ask';
+      if (!on) return;
+      for (const p of ['anthropic', 'openai', 'google']) {
+        const section = document.querySelector(`[data-provider="${p}"]`);
+        section.querySelector('[data-slot="answer"]').innerHTML = `
+          <div class="flex flex-col gap-2">
+            <div class="skeleton-line" style="width: 90%"></div>
+            <div class="skeleton-line" style="width: 75%"></div>
+            <div class="skeleton-line" style="width: 60%"></div>
+          </div>`;
+        section.querySelector('[data-slot="queries-section"]').hidden = true;
+        section.querySelector('[data-slot="citations-section"]').hidden = true;
+        section.querySelector('[data-slot="meta"]').innerHTML =
+          '<span class="pulse"></span> running web_search&hellip;';
+      }
+    }
+
+    function renderProvider(name, r) {
+      const section = document.querySelector(`[data-provider="${name}"]`);
+      const answer = section.querySelector('[data-slot="answer"]');
+      const meta = section.querySelector('[data-slot="meta"]');
+      const qSection = section.querySelector('[data-slot="queries-section"]');
+      const qList = section.querySelector('[data-slot="queries"]');
+      const cSection = section.querySelector('[data-slot="citations-section"]');
+      const cList = section.querySelector('[data-slot="citations"]');
+
+      if (r.error) {
+        answer.innerHTML = '';
+        qSection.hidden = true;
+        cSection.hidden = true;
+        meta.innerHTML = `<div class="error">${escapeHtml(r.error)}</div>`;
+        return;
+      }
+
+      answer.innerHTML = renderAnswer(r.answer || '(no text returned)');
+
+      const queries = r.queries || [];
+      if (queries.length) {
+        qSection.hidden = false;
+        qList.innerHTML = queries.map(q => `<span class="query-chip">${escapeHtml(q)}</span>`).join('');
+      } else {
+        qSection.hidden = true;
+      }
+
+      const citations = r.citations || [];
+      if (citations.length) {
+        cSection.hidden = false;
+        cList.innerHTML = citations.slice(0, 8).map(c => {
+          // Compact mode strips Google groundingChunk URIs (titles preserved);
+          // render those as plain text since there's nothing to link to.
+          const titleHtml = c.url
+            ? `<a href="${escapeAttr(c.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(c.title)}</a>`
+            : escapeHtml(c.title);
+          const host = c.url ? `<div class="citation-host">${escapeHtml(hostOf(c.url))}</div>` : '';
+          return `<div class="citation">${titleHtml}${host}</div>`;
+        }).join('');
+      } else {
+        cSection.hidden = true;
+      }
+
+      meta.innerHTML = [
+        `<span><b>${queries.length}</b> search${queries.length === 1 ? '' : 'es'}</span>`,
+        `<span><b>${citations.length}</b> citation${citations.length === 1 ? '' : 's'}</span>`,
+        `<span><b>${(r.ms / 1000).toFixed(1)}s</b></span>`,
+        r.cost != null ? `<span><b>$${r.cost.toFixed(5)}</b></span>` : '',
+        `<span><b>${formatBytes(r.bytes)}</b></span>`,
+      ].filter(Boolean).join('');
+    }
+
+    // Light markdown-link rendering — providers cite sources inline as
+    // [title](url). Everything else stays as plain text.
+    function renderAnswer(s) {
+      const escaped = escapeHtml(s);
+      return escaped.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, title, url) =>
+        `<a href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer">${title}</a>`
+      );
+    }
+
+    function hostOf(url) {
+      try { return new URL(url).host; } catch { return url; }
+    }
+
+    function formatBytes(n) {
+      if (n == null) return '';
+      if (n < 1024) return `${n} B`;
+      if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+      return `${(n / 1024 / 1024).toFixed(2)} MB`;
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+      }[c]));
+    }
+    function escapeAttr(s) { return escapeHtml(s); }
+  </script>
+</body>
+</html>
