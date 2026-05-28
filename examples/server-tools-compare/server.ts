@@ -24,8 +24,8 @@ if (!OPPER_API_KEY) {
   process.exit(1);
 }
 
-const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "anthropic/claude-sonnet-4-5";
-const OPENAI_MODEL = process.env.OPENAI_MODEL || "openai/gpt-5";
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "anthropic/claude-sonnet-4-6";
+const OPENAI_MODEL = process.env.OPENAI_MODEL || "openai/gpt-5.5";
 const GOOGLE_MODEL = process.env.GOOGLE_MODEL || "gemini-2.5-flash";
 
 async function findPort(start: number, end = start + 20): Promise<number> {

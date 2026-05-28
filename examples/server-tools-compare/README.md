@@ -32,8 +32,8 @@ Open http://localhost:3000.
 | --- | --- | --- |
 | `OPPER_API_KEY` | (required) | Opper key — get one at https://opper.ai |
 | `OPPER_BASE_URL` | `https://api.opper.ai` | Override for staging / local stack |
-| `ANTHROPIC_MODEL` | `anthropic/claude-sonnet-4-5` | Any Claude model with `web_search_*` support |
-| `OPENAI_MODEL` | `openai/gpt-5` | Any OpenAI model with Responses API support |
+| `ANTHROPIC_MODEL` | `anthropic/claude-sonnet-4-6` | Any Claude model with `web_search_*` support |
+| `OPENAI_MODEL` | `openai/gpt-5.5` | Any OpenAI model with Responses API support |
 | `GOOGLE_MODEL` | `gemini-2.5-flash` | Any Gemini model with grounding support |
 
 ## How it works
