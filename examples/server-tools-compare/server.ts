@@ -35,7 +35,7 @@ if (!OPPER_API_KEY) {
   process.exit(1);
 }
 
-const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "anthropic/claude-sonnet-4-6";
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "anthropic/claude-haiku-4-5";
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "openai/gpt-5.5";
 const GOOGLE_MODEL = process.env.GOOGLE_MODEL || "gemini-2.5-flash";
 
@@ -104,12 +104,22 @@ function endpointFor(model: string): { kind: EndpointKind; url: string } {
   throw new Error(`unsupported model prefix: ${model}`);
 }
 
+// Bounds the per-request search budget so the demo finishes quickly
+// across all engines. Applied to surfaces that honor it (Anthropic
+// native web_search_20250305 and the canonical opper:web_search entry).
+// OpenAI native web_search and Google googleSearch don't expose a
+// max_uses control — they cap implicitly via reasoning effort / model
+// behavior. 4 is a balance: enough that complex questions can do a
+// couple of refining queries, low enough that demo latency stays
+// reasonable.
+const MAX_SEARCHES = 4;
+
 function toolBlockFor(kind: EndpointKind, engine: Engine): unknown {
   if (engine === "native") {
     // The original demo path — provider's own server-tool entry. Each
     // compat endpoint round-trips this verbatim to the upstream.
     switch (kind) {
-      case "messages":        return { type: "web_search_20250305", name: "web_search", max_uses: 3 };
+      case "messages":        return { type: "web_search_20250305", name: "web_search", max_uses: MAX_SEARCHES };
       case "responses":       return { type: "web_search" };
       case "generateContent": return { googleSearch: {} };
     }
@@ -118,7 +128,7 @@ function toolBlockFor(kind: EndpointKind, engine: Engine): unknown {
   // selector. The server's resolver routes it: auto → native when the
   // model declares server_tools.web_search=native and the endpoint matches,
   // opper/jina/exa → server-side agentic loop with the named backend.
-  return { type: "opper:web_search", engine };
+  return { type: "opper:web_search", engine, max_uses: MAX_SEARCHES };
 }
 
 function buildBody(kind: EndpointKind, model: string, question: string, tool: unknown): unknown {
@@ -195,11 +205,19 @@ function parseResponses(body: any): Parsed {
   for (const item of body?.output || []) {
     if (item.type === "web_search_call") {
       // Both shapes: action.queries (array, native multi-query call) and
-      // action.query (scalar, per-search emitted by some routes).
+      // action.query (scalar, per-search emitted by some routes). Braces
+      // are mandatory — without them the `else` binds to the inner `if`,
+      // not the outer Array.isArray check, and synthesized blocks with
+      // only action.query fall through silently.
       const qs = item.action?.queries;
       const q = item.action?.query;
-      if (Array.isArray(qs)) for (const qq of qs) if (typeof qq === "string") queries.push(qq);
-      else if (typeof q === "string") queries.push(q);
+      if (Array.isArray(qs)) {
+        for (const qq of qs) {
+          if (typeof qq === "string") queries.push(qq);
+        }
+      } else if (typeof q === "string") {
+        queries.push(q);
+      }
     } else if (item.type === "message" && Array.isArray(item.content)) {
       for (const part of item.content) {
         if (part.type === "output_text") {
