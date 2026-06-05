@@ -20,8 +20,13 @@
       --ring: oklch(0.708 0 0);
       --radius: 0.625rem;
       --anthropic: oklch(0.62 0.16 35);
-      --openai: oklch(0.55 0.13 165);
-      --google: oklch(0.6 0.15 250);
+      --openai:    oklch(0.55 0.13 165);
+      --google:    oklch(0.6 0.15 250);
+      --eng-native: oklch(0.62 0.16 35);   /* matches provider — same shape */
+      --eng-auto:   oklch(0.6 0.15 250);   /* blue — resolver-decided */
+      --eng-opper:  oklch(0.6 0.18 295);   /* purple — agentic loop */
+      --eng-jina:   oklch(0.6 0.15 150);   /* green */
+      --eng-exa:    oklch(0.6 0.15 195);   /* teal */
     }
     @media (prefers-color-scheme: dark) {
       :root {
@@ -65,11 +70,30 @@
       padding: 4px 10px;
     }
     .btn-ghost:hover { color: var(--foreground); }
+    .preset-tabs { display: inline-flex; gap: 4px; padding: 4px; border-radius: var(--radius); background: var(--muted); }
+    .preset-tab {
+      font-size: 12px;
+      padding: 6px 12px;
+      border-radius: calc(var(--radius) - 2px);
+      color: var(--muted-foreground);
+      cursor: pointer;
+      transition: background-color 150ms ease, color 150ms ease;
+      white-space: nowrap;
+    }
+    .preset-tab:hover { color: var(--foreground); }
+    .preset-tab.active { background: var(--card); color: var(--foreground); box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+    .preset-summary {
+      font-size: 12px;
+      color: var(--muted-foreground);
+      max-width: 64ch;
+      margin-top: 8px;
+    }
     .card {
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: var(--radius);
       display: flex; flex-direction: column;
+      min-width: 0;
     }
     .col-header {
       display: flex; align-items: center; gap: 8px;
@@ -77,7 +101,24 @@
       border-bottom: 1px solid var(--border);
       font-weight: 600; font-size: 13px;
     }
-    .col-swatch { width: 8px; height: 8px; border-radius: 2px; }
+    .col-swatch { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+    .engine-chip {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--card);
+      margin-left: auto;
+    }
+    .col-model {
+      font-size: 11px;
+      font-weight: 400;
+      color: var(--muted-foreground);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      min-width: 0;
+    }
     .col-body {
       padding: 14px;
       font-size: 14px; line-height: 1.55;
@@ -164,16 +205,35 @@
       user-select: none;
     }
     .toggle input { accent-color: var(--foreground); }
+
+    /* Grid auto-fits panels: at least one panel per row, equal widths,
+       never narrower than 280px. Lets a 5-column engine view render
+       comfortably on wide screens and stack neatly on narrow ones. */
+    #results {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+    }
   </style>
 </head>
 <body>
-  <div class="max-w-6xl mx-auto px-6 py-10">
-    <header class="mb-8">
+  <div class="max-w-7xl mx-auto px-6 py-10">
+    <header class="mb-6">
       <h1 class="text-3xl font-semibold mb-2">Server-side tools, side by side</h1>
       <p class="text-sm" style="color: var(--muted-foreground); max-width: 64ch;">
-        One question, fanned out to Anthropic <code>web_search</code>, OpenAI <code>web_search</code>, and Google <code>googleSearch</code> through Opper's compat endpoints in parallel. No client-side tool loop &mdash; each provider runs its own search and returns the final answer plus citations.
+        One question, fanned out across model + engine combinations. The original demo &mdash; three providers each calling their own native server-tool block &mdash; is the default; switch presets to see the same model routed through the <code>opper:web_search</code> engine selector (<code>auto</code>, <code>opper</code>, <code>jina</code>, <code>exa</code>).
       </p>
     </header>
+
+    <div class="mb-3 flex items-center gap-4 flex-wrap">
+      <div class="preset-tabs" role="tablist" id="preset-tabs">
+        <button class="preset-tab active" data-preset="providers" role="tab">Providers (native)</button>
+        <button class="preset-tab" data-preset="anthropic-engines" role="tab">Claude &mdash; all engines</button>
+        <button class="preset-tab" data-preset="openai-engines" role="tab">GPT-5.5 &mdash; all engines</button>
+        <button class="preset-tab" data-preset="google-engines" role="tab">Gemini &mdash; all engines</button>
+      </div>
+    </div>
+    <p class="preset-summary mb-6" id="preset-summary"></p>
 
     <form id="ask-form" class="mb-3 flex gap-2">
       <input
@@ -199,61 +259,7 @@
       </label>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="results">
-      <section class="card" data-provider="anthropic">
-        <div class="col-header">
-          <span class="col-swatch" style="background: var(--anthropic)"></span>
-          Anthropic
-          <span class="text-xs font-normal" style="color: var(--muted-foreground)">claude-sonnet-4-6</span>
-        </div>
-        <div class="col-body" data-slot="answer"><span style="color: var(--muted-foreground)">Ask a question to compare.</span></div>
-        <div class="col-section" data-slot="queries-section" hidden>
-          <div class="col-section-label">Queries</div>
-          <div class="queries" data-slot="queries"></div>
-        </div>
-        <div class="col-section" data-slot="citations-section" hidden>
-          <div class="col-section-label">Citations</div>
-          <div class="citations" data-slot="citations"></div>
-        </div>
-        <div class="col-meta" data-slot="meta"></div>
-      </section>
-
-      <section class="card" data-provider="openai">
-        <div class="col-header">
-          <span class="col-swatch" style="background: var(--openai)"></span>
-          OpenAI
-          <span class="text-xs font-normal" style="color: var(--muted-foreground)">gpt-5.5</span>
-        </div>
-        <div class="col-body" data-slot="answer"><span style="color: var(--muted-foreground)">Ask a question to compare.</span></div>
-        <div class="col-section" data-slot="queries-section" hidden>
-          <div class="col-section-label">Queries</div>
-          <div class="queries" data-slot="queries"></div>
-        </div>
-        <div class="col-section" data-slot="citations-section" hidden>
-          <div class="col-section-label">Citations</div>
-          <div class="citations" data-slot="citations"></div>
-        </div>
-        <div class="col-meta" data-slot="meta"></div>
-      </section>
-
-      <section class="card" data-provider="google">
-        <div class="col-header">
-          <span class="col-swatch" style="background: var(--google)"></span>
-          Google
-          <span class="text-xs font-normal" style="color: var(--muted-foreground)">gemini-2.5-flash</span>
-        </div>
-        <div class="col-body" data-slot="answer"><span style="color: var(--muted-foreground)">Ask a question to compare.</span></div>
-        <div class="col-section" data-slot="queries-section" hidden>
-          <div class="col-section-label">Queries</div>
-          <div class="queries" data-slot="queries"></div>
-        </div>
-        <div class="col-section" data-slot="citations-section" hidden>
-          <div class="col-section-label">Citations</div>
-          <div class="citations" data-slot="citations"></div>
-        </div>
-        <div class="col-meta" data-slot="meta"></div>
-      </section>
-    </div>
+    <div id="results"></div>
   </div>
 
   <script>
@@ -261,6 +267,126 @@
     const input = document.getElementById('question');
     const askBtn = document.getElementById('ask');
     const compactToggle = document.getElementById('compact');
+    const resultsEl = document.getElementById('results');
+    const presetTabs = document.getElementById('preset-tabs');
+    const presetSummary = document.getElementById('preset-summary');
+
+    // Provider colors (for the swatch on each card header).
+    const PROVIDER_COLOR = {
+      anthropic: 'var(--anthropic)',
+      openai:    'var(--openai)',
+      google:    'var(--google)',
+    };
+    function providerOf(model) {
+      if (model.startsWith('anthropic/')) return 'anthropic';
+      if (model.startsWith('openai/'))    return 'openai';
+      if (model.startsWith('gemini') || model.startsWith('vertexai/gemini')) return 'google';
+      return 'unknown';
+    }
+    function providerLabel(p) {
+      return p === 'anthropic' ? 'Anthropic' : p === 'openai' ? 'OpenAI' : p === 'google' ? 'Google' : 'Model';
+    }
+
+    // Engine colors and labels (for the chip on each card header).
+    const ENGINES = ['native', 'auto', 'opper', 'jina', 'exa'];
+    const ENGINE_COLOR = {
+      native: 'var(--eng-native)',
+      auto:   'var(--eng-auto)',
+      opper:  'var(--eng-opper)',
+      jina:   'var(--eng-jina)',
+      exa:    'var(--eng-exa)',
+    };
+
+    // Server defaults fetched on load. The preset definitions key off
+    // these so users can swap models via env vars without editing HTML.
+    let defaults = null;
+    let presets = null;
+    let currentPanels = [];
+
+    async function loadDefaults() {
+      const res = await fetch('/api/defaults');
+      defaults = await res.json();
+      presets = buildPresets(defaults);
+      applyPreset('providers');
+    }
+
+    function buildPresets(d) {
+      return {
+        'providers': {
+          summary: `Original demo: each provider calling its own native server-tool block. Anthropic ${escapeHtml(d.anthropic)}, OpenAI ${escapeHtml(d.openai)}, Google ${escapeHtml(d.google)}.`,
+          panels: [
+            { id: 'anthropic-native', model: d.anthropic, engine: 'native' },
+            { id: 'openai-native',    model: d.openai,    engine: 'native' },
+            { id: 'google-native',    model: d.google,    engine: 'native' },
+          ],
+        },
+        'anthropic-engines': {
+          summary: `Same model (${escapeHtml(d.anthropic)}) routed through every engine. Compare cost, latency, and how the answer shifts when the native upstream search is swapped for Opper's agentic loop with Jina/Exa.`,
+          panels: ENGINES.map(e => ({ id: `anthropic-${e}`, model: d.anthropic, engine: e })),
+        },
+        'openai-engines': {
+          summary: `Same model (${escapeHtml(d.openai)}) routed through every engine.`,
+          panels: ENGINES.map(e => ({ id: `openai-${e}`, model: d.openai, engine: e })),
+        },
+        'google-engines': {
+          summary: `Same model (${escapeHtml(d.google)}) routed through every engine. Native uses Gemini's <code>googleSearch</code> grounding; auto resolves to the same since this model declares server_tools.web_search=native.`,
+          panels: ENGINES.map(e => ({ id: `google-${e}`, model: d.google, engine: e })),
+        },
+      };
+    }
+
+    function applyPreset(key) {
+      const preset = presets[key];
+      if (!preset) return;
+      for (const t of presetTabs.querySelectorAll('.preset-tab')) {
+        t.classList.toggle('active', t.dataset.preset === key);
+      }
+      presetSummary.innerHTML = preset.summary;
+      currentPanels = preset.panels;
+      renderPanels(preset.panels);
+    }
+
+    function renderPanels(panels) {
+      resultsEl.innerHTML = panels.map(panelHtml).join('');
+    }
+
+    function panelHtml(p) {
+      const provider = providerOf(p.model);
+      const swatch = PROVIDER_COLOR[provider] || 'var(--muted-foreground)';
+      const engineColor = ENGINE_COLOR[p.engine] || 'var(--muted-foreground)';
+      return `
+        <section class="card" data-panel-id="${escapeAttr(p.id)}">
+          <div class="col-header">
+            <span class="col-swatch" style="background: ${swatch}"></span>
+            <span>${providerLabel(provider)}</span>
+            <span class="col-model" title="${escapeAttr(p.model)}">${escapeHtml(shortModel(p.model))}</span>
+            <span class="engine-chip" style="background: ${engineColor}">${escapeHtml(p.engine)}</span>
+          </div>
+          <div class="col-body" data-slot="answer"><span style="color: var(--muted-foreground)">Ask a question to compare.</span></div>
+          <div class="col-section" data-slot="queries-section" hidden>
+            <div class="col-section-label">Queries</div>
+            <div class="queries" data-slot="queries"></div>
+          </div>
+          <div class="col-section" data-slot="citations-section" hidden>
+            <div class="col-section-label">Citations</div>
+            <div class="citations" data-slot="citations"></div>
+          </div>
+          <div class="col-meta" data-slot="meta"></div>
+        </section>
+      `;
+    }
+
+    function shortModel(model) {
+      // Drop the provider prefix for header display; the full model id is in the tooltip.
+      const slash = model.indexOf('/');
+      return slash >= 0 ? model.slice(slash + 1) : model;
+    }
+
+    presetTabs.addEventListener('click', (e) => {
+      const tab = e.target.closest('.preset-tab');
+      if (!tab) return;
+      applyPreset(tab.dataset.preset);
+    });
 
     document.getElementById('examples').addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-q]');
@@ -274,37 +400,43 @@
       const q = input.value.trim();
       if (!q) return;
       setLoading(true);
-      const payload = JSON.stringify({ question: q, compact: compactToggle.checked });
-      // Fan out: three independent requests; each column paints as soon
-      // as its provider finishes, so the fast one (often Google ~2s) shows
-      // up without waiting for the slow one (often OpenAI ~20s).
-      const tasks = ['anthropic', 'openai', 'google'].map(async (provider) => {
-        try {
-          const res = await fetch(`/api/ask/${provider}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: payload,
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-          renderProvider(provider, data);
-        } catch (err) {
-          renderProvider(provider, { error: err.message });
-        }
-      });
       try {
-        await Promise.all(tasks);
+        // Fan out: every panel fires in parallel; each cell paints as
+        // soon as its request finishes so the fast ones don't wait on
+        // the slow ones (auto routes can take 20s+ on agentic loops).
+        await Promise.all(currentPanels.map(p => runPanel(p, q)));
       } finally {
         setLoading(false);
       }
     });
 
+    async function runPanel(panel, question) {
+      try {
+        const res = await fetch('/api/ask', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: panel.model,
+            engine: panel.engine,
+            question,
+            compact: compactToggle.checked,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok && !data.error) throw new Error(data.error || `HTTP ${res.status}`);
+        renderResult(panel.id, data);
+      } catch (err) {
+        renderResult(panel.id, { error: err.message });
+      }
+    }
+
     function setLoading(on) {
       askBtn.disabled = on;
       askBtn.textContent = on ? 'Asking…' : 'Ask';
       if (!on) return;
-      for (const p of ['anthropic', 'openai', 'google']) {
-        const section = document.querySelector(`[data-provider="${p}"]`);
+      for (const p of currentPanels) {
+        const section = document.querySelector(`[data-panel-id="${cssEscape(p.id)}"]`);
+        if (!section) continue;
         section.querySelector('[data-slot="answer"]').innerHTML = `
           <div class="flex flex-col gap-2">
             <div class="skeleton-line" style="width: 90%"></div>
@@ -318,8 +450,9 @@
       }
     }
 
-    function renderProvider(name, r) {
-      const section = document.querySelector(`[data-provider="${name}"]`);
+    function renderResult(panelId, r) {
+      const section = document.querySelector(`[data-panel-id="${cssEscape(panelId)}"]`);
+      if (!section) return;
       const answer = section.querySelector('[data-slot="answer"]');
       const meta = section.querySelector('[data-slot="meta"]');
       const qSection = section.querySelector('[data-slot="queries-section"]');
@@ -349,8 +482,6 @@
       if (citations.length) {
         cSection.hidden = false;
         cList.innerHTML = citations.slice(0, 8).map(c => {
-          // Compact mode strips Google groundingChunk URIs (titles preserved);
-          // render those as plain text since there's nothing to link to.
           const titleHtml = c.url
             ? `<a href="${escapeAttr(c.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(c.title)}</a>`
             : escapeHtml(c.title);
@@ -370,8 +501,6 @@
       ].filter(Boolean).join('');
     }
 
-    // Light markdown-link rendering — providers cite sources inline as
-    // [title](url). Everything else stays as plain text.
     function renderAnswer(s) {
       const escaped = escapeHtml(s);
       return escaped.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, title, url) =>
@@ -396,6 +525,14 @@
       }[c]));
     }
     function escapeAttr(s) { return escapeHtml(s); }
+
+    // Tiny CSS.escape polyfill — panel IDs are safe ASCII so this only
+    // needs to handle the chars we generate (letters/digits/hyphens).
+    function cssEscape(s) {
+      return (window.CSS && CSS.escape) ? CSS.escape(s) : String(s).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
+    }
+
+    loadDefaults();
   </script>
 </body>
 </html>
