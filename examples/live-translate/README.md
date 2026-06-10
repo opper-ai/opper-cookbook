@@ -9,7 +9,7 @@ What it shows:
 - **Speech-to-speech translation** over the Realtime WebSocket — audio in, translated audio out, no turns to manage. The model streams continuously.
 - **Browser-direct WebSocket** authenticated with a single-use ticket carried in the `Sec-WebSocket-Protocol: opper-ticket.<secret>` subprotocol header — the API key never appears in the browser, URLs, or access logs.
 - **Pre-binding** — the model **and the target language** are locked onto the ticket at mint time (`locked_fields`). A leaked ticket can only run the exact translation you authorized; it cannot switch models or change the target language.
-- **Live captions** — the source-language transcript of what was heard, and the streaming translated text, rendered alongside the audio.
+- **Live captions** — the streaming translated text, rendered as continuous interpretation alongside the audio. (The source-language transcript also arrives on the wire as `transcript.committed`; the UI uses it only as an utterance boundary and doesn't render it, so the translation reads as one flowing stream.)
 
 ## Flow
 
@@ -52,7 +52,7 @@ The dropdown is populated from `TARGET_LANGUAGES` in `server.ts`. The browser PO
 ## Notes on the model
 
 - **Continuous, not turn-based.** Live Translate streams audio without `turnComplete` boundaries, so there's nothing to "send" — just keep the mic open. Barge-in (the speaker talking over the playback) is surfaced as `speech.started`, which clears the playback queue.
-- **Captions are best-effort.** The translated-text transcript is emitted sparsely and can be partial — the audio is the primary output. The source transcript confirms what the model heard.
+- **Captions are best-effort.** The translated-text transcript is emitted sparsely and can be partial — the audio is the primary output. The model generates translated speech directly (speech-to-speech); the transcript is a separate ASR pass layered on top, which is why it can lag or drop.
 - **One target per session.** A session translates everything into a single target language. For a two-way conversation, mint a second session in the opposite direction.
 
 ## Architecture notes

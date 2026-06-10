@@ -69,10 +69,19 @@
     .status-dot { width: 6px; height: 6px; border-radius: 999px; background: var(--muted-foreground); display: inline-block; }
     .status-dot.live { background: oklch(0.65 0.18 145); box-shadow: 0 0 0 3px oklch(0.65 0.18 145 / 0.18); }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-    .bubble { border-radius: var(--radius); padding: 0.6rem 0.85rem; max-width: 90%; line-height: 1.45; animation: fadeIn 180ms ease-out; }
-    .bubble-src { background: var(--muted); color: var(--muted-foreground); align-self: flex-start; }
-    .bubble-xlt { background: var(--card); color: var(--foreground); align-self: flex-end; border: 1px solid var(--border); }
-    .tag { font-size: 0.68rem; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; opacity: 0.7; margin-bottom: 0.15rem; display: block; }
+    /* Translated text reads as continuous interpretation: one flowing line
+       per utterance, the in-progress one slightly emphasized. */
+    .caption {
+      font-size: 1.35rem; line-height: 1.55; font-weight: 500;
+      color: var(--foreground);
+      animation: fadeIn 180ms ease-out;
+    }
+    .caption:not(.caption-live) { color: var(--muted-foreground); }
+    .caption-live::after {
+      content: "▌"; margin-left: 1px;
+      animation: caret 1s step-end infinite; opacity: 0.6;
+    }
+    @keyframes caret { 50% { opacity: 0; } }
   </style>
 </head>
 <body class="min-h-screen">
@@ -123,7 +132,10 @@
       </div>
     </header>
 
-    <div id="feed" class="feed flex-1 overflow-y-auto flex flex-col gap-3 py-4"></div>
+    <div id="feed" class="feed flex-1 overflow-y-auto flex flex-col gap-4 py-6"></div>
+    <div id="feedHint" class="flex-1 flex items-center justify-center text-center px-8" style="color: var(--muted-foreground)">
+      <p class="text-sm max-w-xs">Start speaking — the translation appears here, a few seconds behind, in <span id="hintTarget" class="font-medium"></span>.</p>
+    </div>
 
     <footer class="py-4 flex flex-col items-center gap-2">
       <button id="micBtn" class="btn-ghost w-16 h-16 rounded-full flex items-center justify-center text-2xl" title="Toggle microphone (Space)">
@@ -145,6 +157,8 @@
     const micBtn = document.getElementById("micBtn");
     const micHint = document.getElementById("micHint");
     const feed = document.getElementById("feed");
+    const feedHint = document.getElementById("feedHint");
+    const hintTarget = document.getElementById("hintTarget");
     const statusLine = document.getElementById("statusLine");
     const statusDot = document.getElementById("statusDot");
     const targetBadge = document.getElementById("targetBadge");
@@ -206,28 +220,33 @@
       return out;
     }
 
-    function addSource(text) {
-      const el = document.createElement("div");
-      el.className = "bubble bubble-src";
-      el.innerHTML = `<span class="tag">🌐 heard</span>${escapeHtml(text)}`;
-      feed.appendChild(el);
-      feed.scrollTop = feed.scrollHeight;
-    }
-
+    // The translated text streams into one rolling caption line. A new line
+    // starts only on an utterance boundary (the speaker finishes a thought),
+    // so the translation reads as continuous interpretation rather than
+    // paired "heard / translated" chat bubbles.
     function appendXlt(delta) {
       if (!curXlt) {
+        // First translation — swap the placeholder for the live feed.
+        if (!feedHint.classList.contains("hidden")) {
+          feedHint.classList.add("hidden");
+          feed.classList.remove("hidden");
+        }
         curXlt = document.createElement("div");
-        curXlt.className = "bubble bubble-xlt";
+        curXlt.className = "caption caption-live";
         curXlt._text = "";
-        curXlt.innerHTML = `<span class="tag">🔊 ${escapeHtml(targetLabel)}</span><span class="body"></span>`;
         feed.appendChild(curXlt);
       }
       curXlt._text += delta;
-      curXlt.querySelector(".body").textContent = curXlt._text;
+      curXlt.textContent = curXlt._text;
       feed.scrollTop = feed.scrollHeight;
     }
 
-    function finalizeXlt() { curXlt = null; }
+    // Close the current line so the next utterance's translation starts
+    // fresh. Drops the "live" styling once it's settled.
+    function finalizeXlt() {
+      if (curXlt) curXlt.classList.remove("caption-live");
+      curXlt = null;
+    }
 
     function escapeHtml(s) {
       return String(s).replace(/[&<>"']/g, (c) => (
@@ -351,6 +370,9 @@
         landing.classList.add("hidden");
         session.classList.remove("hidden");
         feed.innerHTML = "";
+        feed.classList.add("hidden");
+        hintTarget.textContent = targetLabel;
+        feedHint.classList.remove("hidden");
         targetBadge.textContent = `→ ${targetLabel}`;
         setStatus("Connecting…");
 
@@ -368,8 +390,7 @@
           catch (err) { console.warn("[ws] parse error:", err); }
         };
         ws.onclose = (e) => {
-          setStatus("Disconnected", false);
-          if (!e.wasClean) addSource("Connection lost.");
+          setStatus(e.wasClean ? "Disconnected" : "Connection lost", false);
         };
         ws.onerror = () => setStatus("Connection error", false);
       } catch (err) {
@@ -396,10 +417,11 @@
           if (msg.audio) playAudioChunk(msg.audio);
           return;
 
-        // Source-language transcript of what the speaker said.
+        // The speaker finished an utterance. We don't render the source
+        // text — it's only a boundary signal to close the current
+        // translation line so the next one starts fresh.
         case "transcript.committed":
-          if (msg.transcript) addSource(msg.transcript);
-          finalizeXlt(); // a new utterance heard → close the prior translation
+          finalizeXlt();
           return;
 
         // Streaming translated text (the words the model is speaking).
