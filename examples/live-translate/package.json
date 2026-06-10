@@ -1,0 +1,17 @@
+{
+  "name": "live-translate",
+  "version": "0.1.0",
+  "description": "Real-time speech-to-speech translation — browser-direct WebSocket via ephemeral tickets, powered by Opper's Realtime API and Gemini 3.5 Live Translate",
+  "type": "module",
+  "scripts": {
+    "start": "tsx server.ts"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "opperai": "^4.0.0-beta.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "tsx": "^4.0.0"
+  }
+}
