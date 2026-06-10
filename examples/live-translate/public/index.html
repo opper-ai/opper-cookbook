@@ -61,6 +61,10 @@
     }
     .btn-ghost:hover { color: var(--foreground); }
     .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); }
+    .src-opt { cursor: pointer; background: var(--card); color: var(--foreground); text-align: center; transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease; }
+    .src-opt:hover:not(.active):not(:disabled) { border-color: var(--ring); }
+    .src-opt.active { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); }
+    .src-opt:disabled { opacity: 0.45; cursor: not-allowed; }
     .recording { animation: recPulse 1.6s ease-in-out infinite; }
     @keyframes recPulse {
       0%, 100% { box-shadow: 0 0 0 0 oklch(from var(--foreground) l c h / 0.18); }
@@ -94,9 +98,16 @@
         <h1 class="text-2xl font-bold">Live Translate</h1>
       </div>
       <p class="text-sm mb-6" style="color: var(--muted-foreground)">
-        Speak in <strong>any language</strong> — hear it spoken back, instantly, in the language you choose.
-        Source language is detected automatically.
+        Translate live speech in real time — from your <strong>microphone</strong>, or from any
+        <strong>browser tab</strong> (a video, a call). You hear only the translation; the source
+        language is detected automatically.
       </p>
+
+      <label class="block text-sm font-medium mb-2">Source</label>
+      <div id="sourceToggle" class="grid grid-cols-2 gap-2 mb-5">
+        <button type="button" data-src="mic" class="src-opt field px-3 py-2.5 text-sm font-medium">🎙️ Microphone</button>
+        <button type="button" data-src="tab" class="src-opt field px-3 py-2.5 text-sm font-medium">▶️ Browser tab</button>
+      </div>
 
       <label class="block text-sm font-medium mb-2">Translate into</label>
       <select id="targetSelect" class="field w-full px-3 py-2.5 mb-5"></select>
@@ -104,6 +115,12 @@
       <button id="startBtn" class="btn-primary w-full py-3 font-semibold">
         Start translating
       </button>
+
+      <p id="tabHelp" class="text-xs mt-3 leading-relaxed hidden" style="color: var(--muted-foreground)">
+        You'll be asked to pick a window to share — choose the <strong>tab</strong> playing your
+        audio and tick <strong>"Also share tab audio"</strong>. The tab's original sound is muted
+        locally, so you hear only the translation.
+      </p>
 
       <p class="text-xs mt-4 leading-relaxed" style="color: var(--muted-foreground)">
         The browser connects straight to Opper over WebSocket, authenticated with a single-use
@@ -156,6 +173,8 @@
     const endBtn = document.getElementById("endBtn");
     const micBtn = document.getElementById("micBtn");
     const micHint = document.getElementById("micHint");
+    const sourceToggle = document.getElementById("sourceToggle");
+    const tabHelp = document.getElementById("tabHelp");
     const feed = document.getElementById("feed");
     const feedHint = document.getElementById("feedHint");
     const hintTarget = document.getElementById("hintTarget");
@@ -166,12 +185,45 @@
     // ── State ────────────────────────────────────────────────────────────
     let ws = null;
     let audioContext = null;
-    let micStream = null, micSource = null, micProcessor = null, micActive = false;
+    // One capture path for both sources: mic (getUserMedia) or browser tab
+    // (getDisplayMedia). capturing gates whether we forward frames upstream.
+    let capStream = null, capNode = null, capProc = null, capturing = false;
+    let sourceMode = "mic";        // "mic" | "tab"
+    let pendingStream = null;      // acquired in the click gesture, wired on session.started
     let playbackQueue = [], isPlaying = false, currentSource = null;
-    let inputSampleRate = 16000;   // mic capture rate (Gemini Live wants 16k)
-    let outputSampleRate = 24000;  // playback rate (Gemini Live emits 24k)
+    let inputSampleRate = 16000;   // capture rate the model wants (16k)
+    let outputSampleRate = 24000;  // playback rate the model emits (24k)
     let targetLabel = "";
-    let curXlt = null;             // the in-progress translation bubble
+    let curXlt = null;             // the in-progress translation line
+
+    // Tab capture needs getDisplayMedia + the suppressLocalAudioPlayback
+    // constraint (so the original audio is muted locally while we capture
+    // it). Both are Chrome/Edge today — feature-detect and disable the tab
+    // option elsewhere.
+    const tabSupported = !!(navigator.mediaDevices?.getDisplayMedia) &&
+      !!navigator.mediaDevices.getSupportedConstraints?.().suppressLocalAudioPlayback;
+
+    // ── Source toggle ────────────────────────────────────────────────────
+    function selectSource(mode) {
+      sourceMode = mode;
+      for (const b of sourceToggle.querySelectorAll(".src-opt")) {
+        b.classList.toggle("active", b.dataset.src === mode);
+      }
+      tabHelp.classList.toggle("hidden", mode !== "tab");
+    }
+    sourceToggle.addEventListener("click", (e) => {
+      const btn = e.target.closest(".src-opt");
+      if (btn && !btn.disabled) selectSource(btn.dataset.src);
+    });
+    (function initSourceToggle() {
+      const tabBtn = sourceToggle.querySelector('[data-src="tab"]');
+      if (!tabSupported) {
+        tabBtn.disabled = true;
+        tabBtn.title = "Browser-tab capture needs Chrome or Edge";
+        tabBtn.textContent = "▶️ Browser tab (Chrome)";
+      }
+      selectSource("mic");
+    })();
 
     // ── Boot: load the language menu ─────────────────────────────────────
     (async () => {
@@ -292,69 +344,159 @@
       }
     }
 
-    // ── Mic ──────────────────────────────────────────────────────────────
-    async function toggleMic() { if (micActive) stopMic(); else await startMic(); }
+    // ── Capture (mic or tab) ─────────────────────────────────────────────
+    // Shared forwarding pipeline: a ScriptProcessor pulls frames, we downmix
+    // to mono + resample to the model's 16k input rate, and send base64
+    // PCM16. `capturing` gates forwarding so the footer button can pause
+    // without tearing down the stream.
+    function wireCapture(stream) {
+      capStream = stream;
+      const nativeRate = audioContext.sampleRate;
+      capNode = audioContext.createMediaStreamSource(stream);
+      capProc = audioContext.createScriptProcessor(4096, 1, 1);
+      capProc.onaudioprocess = (e) => {
+        if (!capturing || !ws || ws.readyState !== WebSocket.OPEN) return;
+        const inBuf = e.inputBuffer;
+        // Downmix to mono — tab audio is usually stereo.
+        let mono;
+        if (inBuf.numberOfChannels > 1) {
+          const a = inBuf.getChannelData(0), b = inBuf.getChannelData(1);
+          mono = new Float32Array(a.length);
+          for (let i = 0; i < a.length; i++) mono[i] = (a[i] + b[i]) * 0.5;
+        } else {
+          mono = inBuf.getChannelData(0);
+        }
+        const ds = resample(mono, nativeRate, inputSampleRate);
+        const pcm16 = new Int16Array(ds.length);
+        for (let i = 0; i < ds.length; i++) {
+          pcm16[i] = Math.max(-32768, Math.min(32767, Math.round(ds[i] * 32768)));
+        }
+        ws.send(JSON.stringify({ type: "audio.append", audio: uint8ToBase64(new Uint8Array(pcm16.buffer)) }));
+      };
+      capNode.connect(capProc);
+      capProc.connect(audioContext.destination);
+    }
 
-    async function startMic() {
-      try {
-        micStream = await navigator.mediaDevices.getUserMedia({
-          audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+    function captureLive() {
+      micBtn.classList.remove("btn-ghost");
+      micBtn.classList.add("btn-primary", "recording");
+      micBtn.textContent = sourceMode === "tab" ? "⏸" : "🎙️";
+      micHint.textContent = sourceMode === "tab" ? `Dubbing → ${targetLabel} · tap to pause` : "Listening — speak naturally";
+      setStatus(sourceMode === "tab" ? "Dubbing tab audio…" : "Listening…", true);
+    }
+    function captureIdle(text) {
+      micBtn.classList.remove("btn-primary", "recording");
+      micBtn.classList.add("btn-ghost");
+      micBtn.textContent = sourceMode === "tab" ? "▶" : "🎙️";
+      micHint.textContent = text;
+    }
+
+    // Acquire the source stream. MUST be called from a user gesture for tab
+    // mode — getDisplayMedia needs transient activation, which is gone by the
+    // time the async WS handshake finishes. Throws "no-tab-audio" if the user
+    // didn't tick "share tab audio".
+    async function acquireStream() {
+      if (sourceMode === "tab") {
+        // getDisplayMedia requires a video track to offer tab audio; we ask
+        // for it then drop it. suppressLocalAudioPlayback mutes the tab
+        // locally so only our translated playback is audible — and because we
+        // tap the tab, not the speakers, there's no echo loop.
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: { suppressLocalAudioPlayback: true, echoCancellation: false, noiseSuppression: false, autoGainControl: false },
         });
+        stream.getVideoTracks().forEach((t) => t.stop());
+        const audio = stream.getAudioTracks()[0];
+        if (!audio) {
+          stream.getTracks().forEach((t) => t.stop());
+          throw new Error("no-tab-audio");
+        }
+        // User hit Chrome's "Stop sharing" bar → end the session gracefully.
+        audio.addEventListener("ended", () => {
+          if (!session.classList.contains("hidden")) endSession();
+        });
+        return stream;
+      }
+      return await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+      });
+    }
+
+    async function startCapture() {
+      try {
         if (!audioContext) audioContext = new AudioContext();
         if (audioContext.state === "suspended") await audioContext.resume();
-
-        const nativeRate = audioContext.sampleRate;
-        micSource = audioContext.createMediaStreamSource(micStream);
-        micProcessor = audioContext.createScriptProcessor(4096, 1, 1);
-
-        micProcessor.onaudioprocess = (e) => {
-          if (!micActive || !ws || ws.readyState !== WebSocket.OPEN) return;
-          const raw = e.inputBuffer.getChannelData(0);
-          const ds = resample(raw, nativeRate, inputSampleRate);
-          const pcm16 = new Int16Array(ds.length);
-          for (let i = 0; i < ds.length; i++) {
-            pcm16[i] = Math.max(-32768, Math.min(32767, Math.round(ds[i] * 32768)));
-          }
-          ws.send(JSON.stringify({ type: "audio.append", audio: uint8ToBase64(new Uint8Array(pcm16.buffer)) }));
-        };
-
-        micSource.connect(micProcessor);
-        micProcessor.connect(audioContext.destination);
-        micActive = true;
-        micBtn.classList.remove("btn-ghost");
-        micBtn.classList.add("btn-primary", "recording");
-        micHint.textContent = "Listening — speak naturally";
-        setStatus("Listening…", true);
+        // Prefer the stream acquired during the Start click (tab mode needs
+        // the gesture); fall back to acquiring now for the pause→resume path,
+        // which is itself driven by a click on the mic button.
+        const stream = pendingStream || await acquireStream();
+        pendingStream = null;
+        wireCapture(stream);
+        capturing = true;
+        captureLive();
       } catch (err) {
-        console.error("mic error:", err);
-        setStatus("Microphone access denied");
+        console.error("capture error:", err);
+        const denied = err && err.name === "NotAllowedError";
+        setStatus(
+          sourceMode === "tab"
+            ? (err.message === "no-tab-audio" ? 'No tab audio — re-share and tick "Also share tab audio"'
+               : denied ? "Tab share cancelled" : "Couldn't capture tab audio")
+            : "Microphone access denied",
+          false,
+        );
+        captureIdle("Tap to try again");
       }
     }
 
-    function stopMic() {
-      micActive = false;
-      if (micProcessor) { micProcessor.disconnect(); micProcessor = null; }
-      if (micSource) { micSource.disconnect(); micSource = null; }
-      if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
-      micBtn.classList.remove("btn-primary", "recording");
-      micBtn.classList.add("btn-ghost");
-      micHint.textContent = "Mic off — tap to resume";
-      setStatus("Paused", false);
-      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "audio.commit" }));
+    function teardownCapture() {
+      capturing = false;
+      if (capProc) { capProc.disconnect(); capProc = null; }
+      if (capNode) { capNode.disconnect(); capNode = null; }
+      if (capStream) { capStream.getTracks().forEach((t) => t.stop()); capStream = null; }
+    }
+
+    // Footer button: pause/resume forwarding. Keeps the stream open so resume
+    // is instant (no re-prompt for the tab share).
+    function toggleCapture() {
+      if (!capStream) { startCapture(); return; }
+      capturing = !capturing;
+      if (capturing) {
+        captureLive();
+      } else {
+        stopPlayback();
+        captureIdle("Paused — tap to resume");
+        setStatus("Paused", false);
+        if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "audio.commit" }));
+      }
     }
 
     // ── Session lifecycle ────────────────────────────────────────────────
     startBtn.addEventListener("click", startSession);
     endBtn.addEventListener("click", endSession);
-    micBtn.addEventListener("click", toggleMic);
+    micBtn.addEventListener("click", toggleCapture);
     document.addEventListener("keydown", (e) => {
       if (session.classList.contains("hidden")) return;
-      if (e.code === "Space") { e.preventDefault(); toggleMic(); }
+      if (e.code === "Space") { e.preventDefault(); toggleCapture(); }
     });
 
     async function startSession() {
       const target = targetSelect.value;
       startBtn.disabled = true;
+
+      // Acquire the capture stream INSIDE the click gesture. getDisplayMedia
+      // (tab mode) needs transient user activation, which would be gone after
+      // the async mint + WS handshake. Hold it; wire it on session.started.
+      startBtn.textContent = sourceMode === "tab" ? "Waiting for tab…" : "Starting…";
+      try {
+        pendingStream = await acquireStream();
+      } catch (err) {
+        console.error("capture error:", err);
+        if (sourceMode === "tab" && err.message === "no-tab-audio") tabHelp.classList.remove("hidden");
+        startBtn.disabled = false;
+        startBtn.textContent = "Start translating";
+        return;
+      }
+
       startBtn.textContent = "Minting ticket…";
       try {
         // Step 1: mint a ticket via our backend. The API key stays server-side.
@@ -371,7 +513,9 @@
         session.classList.remove("hidden");
         feed.innerHTML = "";
         feed.classList.add("hidden");
-        hintTarget.textContent = targetLabel;
+        feedHint.innerHTML = sourceMode === "tab"
+          ? `<p class="text-sm max-w-xs">Play your video — the dubbed translation appears here, a few seconds behind, in <span class="font-medium">${escapeHtml(targetLabel)}</span>.</p>`
+          : `<p class="text-sm max-w-xs">Start speaking — the translation appears here, a few seconds behind, in <span class="font-medium">${escapeHtml(targetLabel)}</span>.</p>`;
         feedHint.classList.remove("hidden");
         targetBadge.textContent = `→ ${targetLabel}`;
         setStatus("Connecting…");
@@ -396,6 +540,7 @@
       } catch (err) {
         console.error(err);
         setStatus("Failed to start: " + err.message);
+        if (pendingStream) { pendingStream.getTracks().forEach((t) => t.stop()); pendingStream = null; }
         landing.classList.remove("hidden");
         session.classList.add("hidden");
       } finally {
@@ -409,8 +554,8 @@
         case "session.started":
           inputSampleRate = msg.input_sample_rate || msg.sample_rate || 16000;
           outputSampleRate = msg.output_sample_rate || 24000;
-          setStatus("Connected — start speaking", true);
-          startMic();
+          setStatus("Connected", true);
+          startCapture();
           return;
 
         case "audio.delta":
@@ -429,9 +574,12 @@
           if (msg.delta) appendXlt(msg.delta);
           return;
 
-        // Barge-in: the speaker started talking over the playback.
+        // Barge-in only makes sense for the conversational mic seat — the
+        // speaker talking over the reply. In tab mode the source is a
+        // continuous stream (a video), so a "speech started" mid-playback is
+        // just the next sentence; cutting the dub there is exactly wrong.
         case "speech.started":
-          stopPlayback();
+          if (sourceMode === "mic") stopPlayback();
           finalizeXlt();
           return;
 
@@ -456,10 +604,11 @@
 
     function endSession() {
       if (ws) { ws.close(); ws = null; }
-      stopMic();
+      teardownCapture();
       stopPlayback();
       if (audioContext) { audioContext.close(); audioContext = null; }
       curXlt = null;
+      micBtn.textContent = "🎙️";
       session.classList.add("hidden");
       landing.classList.remove("hidden");
     }
