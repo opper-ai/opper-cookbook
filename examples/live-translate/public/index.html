@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Live Translate</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Wix+Madefor+Display:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background: oklch(1 0 0);
+      --foreground: oklch(0.2938 0.0414 248.11);
+      --card: oklch(1 0 0);
+      --muted: oklch(0.97 0 0);
+      --muted-foreground: oklch(0.45 0 0);
+      --border: oklch(0.922 0 0);
+      --primary: oklch(0.205 0 0);
+      --primary-foreground: oklch(0.985 0 0);
+      --ring: oklch(0.708 0 0);
+      --radius: 0.625rem;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --background: oklch(0.252 0 102.07);
+        --foreground: oklch(0.9881 0 102.07);
+        --card: oklch(0.23 0 0);
+        --muted: oklch(0.30 0 0);
+        --muted-foreground: oklch(0.72 0 0);
+        --border: oklch(0.35 0 0);
+        --primary: oklch(0.9881 0 102.07);
+        --primary-foreground: oklch(0.252 0 102.07);
+        --ring: oklch(0.556 0 0);
+      }
+    }
+    html, body { background: var(--background); color: var(--foreground); }
+    body { font-family: 'Wix Madefor Display', system-ui, -apple-system, sans-serif; }
+    .feed::-webkit-scrollbar { width: 6px; }
+    .feed::-webkit-scrollbar-track { background: transparent; }
+    .feed::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    select, button { font-family: inherit; }
+    select { background-image: none; }
+    .field {
+      background: var(--card); color: var(--foreground);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      transition: border-color 150ms ease, box-shadow 150ms ease;
+    }
+    .field:hover { border-color: oklch(from var(--border) calc(l - 0.05) c h); }
+    .field:focus-visible { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px oklch(from var(--ring) l c h / 0.25); }
+    .btn-primary {
+      background: var(--primary); color: var(--primary-foreground);
+      border-radius: var(--radius);
+      transition: opacity 150ms ease, transform 80ms ease;
+    }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-primary:active { transform: translateY(1px); }
+    .btn-ghost {
+      background: var(--muted); color: var(--muted-foreground);
+      border-radius: var(--radius);
+      transition: background-color 150ms ease, color 150ms ease;
+    }
+    .btn-ghost:hover { color: var(--foreground); }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); }
+    .recording { animation: recPulse 1.6s ease-in-out infinite; }
+    @keyframes recPulse {
+      0%, 100% { box-shadow: 0 0 0 0 oklch(from var(--foreground) l c h / 0.18); }
+      50%      { box-shadow: 0 0 0 10px oklch(from var(--foreground) l c h / 0); }
+    }
+    .status-dot { width: 6px; height: 6px; border-radius: 999px; background: var(--muted-foreground); display: inline-block; }
+    .status-dot.live { background: oklch(0.65 0.18 145); box-shadow: 0 0 0 3px oklch(0.65 0.18 145 / 0.18); }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    .bubble { border-radius: var(--radius); padding: 0.6rem 0.85rem; max-width: 90%; line-height: 1.45; animation: fadeIn 180ms ease-out; }
+    .bubble-src { background: var(--muted); color: var(--muted-foreground); align-self: flex-start; }
+    .bubble-xlt { background: var(--card); color: var(--foreground); align-self: flex-end; border: 1px solid var(--border); }
+    .tag { font-size: 0.68rem; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; opacity: 0.7; margin-bottom: 0.15rem; display: block; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+  <!-- Landing -->
+  <div id="landing" class="min-h-screen flex items-center justify-center p-6">
+    <div class="card w-full max-w-md p-8">
+      <div class="flex items-center gap-3 mb-1">
+        <span class="text-3xl">🗣️</span>
+        <h1 class="text-2xl font-bold">Live Translate</h1>
+      </div>
+      <p class="text-sm mb-6" style="color: var(--muted-foreground)">
+        Speak in <strong>any language</strong> — hear it spoken back, instantly, in the language you choose.
+        Source language is detected automatically.
+      </p>
+
+      <label class="block text-sm font-medium mb-2">Translate into</label>
+      <select id="targetSelect" class="field w-full px-3 py-2.5 mb-5"></select>
+
+      <button id="startBtn" class="btn-primary w-full py-3 font-semibold">
+        Start translating
+      </button>
+
+      <p class="text-xs mt-4 leading-relaxed" style="color: var(--muted-foreground)">
+        The browser connects straight to Opper over WebSocket, authenticated with a single-use
+        ephemeral ticket. The model and target language are locked onto the ticket at mint time —
+        your API key never reaches the browser.
+      </p>
+    </div>
+  </div>
+
+  <!-- Session -->
+  <div id="session" class="hidden min-h-screen flex flex-col max-w-2xl mx-auto p-4">
+    <header class="flex items-center justify-between py-3">
+      <div class="flex items-center gap-2">
+        <span class="text-xl">🗣️</span>
+        <div>
+          <div class="font-semibold leading-tight">Live Translate</div>
+          <div class="text-xs flex items-center gap-1.5" style="color: var(--muted-foreground)">
+            <span id="statusDot" class="status-dot"></span>
+            <span id="statusLine">Connecting…</span>
+          </div>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <span id="targetBadge" class="text-xs px-2.5 py-1 rounded-full" style="background: var(--muted); color: var(--muted-foreground)"></span>
+        <button id="endBtn" class="btn-ghost text-sm px-3 py-1.5">End</button>
+      </div>
+    </header>
+
+    <div id="feed" class="feed flex-1 overflow-y-auto flex flex-col gap-3 py-4"></div>
+
+    <footer class="py-4 flex flex-col items-center gap-2">
+      <button id="micBtn" class="btn-ghost w-16 h-16 rounded-full flex items-center justify-center text-2xl" title="Toggle microphone (Space)">
+        🎙️
+      </button>
+      <div class="text-xs" style="color: var(--muted-foreground)">
+        <span id="micHint">Tap the mic and start speaking</span> · <kbd class="px-1">Space</kbd> toggles
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    // ── DOM ──────────────────────────────────────────────────────────────
+    const landing = document.getElementById("landing");
+    const session = document.getElementById("session");
+    const targetSelect = document.getElementById("targetSelect");
+    const startBtn = document.getElementById("startBtn");
+    const endBtn = document.getElementById("endBtn");
+    const micBtn = document.getElementById("micBtn");
+    const micHint = document.getElementById("micHint");
+    const feed = document.getElementById("feed");
+    const statusLine = document.getElementById("statusLine");
+    const statusDot = document.getElementById("statusDot");
+    const targetBadge = document.getElementById("targetBadge");
+
+    // ── State ────────────────────────────────────────────────────────────
+    let ws = null;
+    let audioContext = null;
+    let micStream = null, micSource = null, micProcessor = null, micActive = false;
+    let playbackQueue = [], isPlaying = false, currentSource = null;
+    let inputSampleRate = 16000;   // mic capture rate (Gemini Live wants 16k)
+    let outputSampleRate = 24000;  // playback rate (Gemini Live emits 24k)
+    let targetLabel = "";
+    let curXlt = null;             // the in-progress translation bubble
+
+    // ── Boot: load the language menu ─────────────────────────────────────
+    (async () => {
+      try {
+        const cfg = await (await fetch("/api/config")).json();
+        for (const l of cfg.languages) {
+          const o = document.createElement("option");
+          o.value = l.code; o.textContent = l.label;
+          if (l.code === cfg.defaultTarget) o.selected = true;
+          targetSelect.appendChild(o);
+        }
+      } catch (e) {
+        statusLine.textContent = "Failed to load config";
+      }
+    })();
+
+    // ── Helpers ──────────────────────────────────────────────────────────
+    function setStatus(text, live) {
+      statusLine.textContent = text;
+      if (live !== undefined) statusDot.classList.toggle("live", !!live);
+    }
+
+    function uint8ToBase64(bytes) {
+      let bin = "";
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+      }
+      return btoa(bin);
+    }
+
+    // Linear-interpolation resample. Mic runs at the AudioContext's native
+    // rate (often 48k); the model wants 16k. Playback is the reverse.
+    function resample(f32, fromRate, toRate) {
+      if (fromRate === toRate) return f32;
+      const ratio = fromRate / toRate;
+      const len = Math.round(f32.length / ratio);
+      const out = new Float32Array(len);
+      for (let i = 0; i < len; i++) {
+        const idx = i * ratio;
+        const lo = Math.floor(idx);
+        const hi = Math.min(lo + 1, f32.length - 1);
+        const frac = idx - lo;
+        out[i] = f32[lo] * (1 - frac) + f32[hi] * frac;
+      }
+      return out;
+    }
+
+    function addSource(text) {
+      const el = document.createElement("div");
+      el.className = "bubble bubble-src";
+      el.innerHTML = `<span class="tag">🌐 heard</span>${escapeHtml(text)}`;
+      feed.appendChild(el);
+      feed.scrollTop = feed.scrollHeight;
+    }
+
+    function appendXlt(delta) {
+      if (!curXlt) {
+        curXlt = document.createElement("div");
+        curXlt.className = "bubble bubble-xlt";
+        curXlt._text = "";
+        curXlt.innerHTML = `<span class="tag">🔊 ${escapeHtml(targetLabel)}</span><span class="body"></span>`;
+        feed.appendChild(curXlt);
+      }
+      curXlt._text += delta;
+      curXlt.querySelector(".body").textContent = curXlt._text;
+      feed.scrollTop = feed.scrollHeight;
+    }
+
+    function finalizeXlt() { curXlt = null; }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => (
+        { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+      ));
+    }
+
+    // ── Playback ─────────────────────────────────────────────────────────
+    function playAudioChunk(b64) {
+      playbackQueue.push(b64);
+      if (!isPlaying) drainPlayback();
+    }
+    async function drainPlayback() {
+      if (playbackQueue.length === 0) { isPlaying = false; return; }
+      isPlaying = true;
+      const b64 = playbackQueue.shift();
+      try {
+        if (!audioContext) audioContext = new AudioContext();
+        if (audioContext.state === "suspended") await audioContext.resume();
+        const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+        const pcm16 = new Int16Array(bytes.buffer);
+        const f32 = new Float32Array(pcm16.length);
+        for (let i = 0; i < pcm16.length; i++) f32[i] = pcm16[i] / 32768;
+        const buf = audioContext.createBuffer(1, f32.length, outputSampleRate);
+        buf.copyToChannel(f32, 0);
+        const src = audioContext.createBufferSource();
+        src.buffer = buf;
+        src.connect(audioContext.destination);
+        currentSource = src;
+        src.onended = () => { currentSource = null; drainPlayback(); };
+        src.start();
+      } catch (e) {
+        console.warn("playback error:", e);
+        drainPlayback();
+      }
+    }
+    function stopPlayback() {
+      playbackQueue = [];
+      isPlaying = false;
+      if (currentSource) {
+        try { currentSource.onended = null; currentSource.stop(); } catch {}
+        currentSource = null;
+      }
+    }
+
+    // ── Mic ──────────────────────────────────────────────────────────────
+    async function toggleMic() { if (micActive) stopMic(); else await startMic(); }
+
+    async function startMic() {
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({
+          audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+        });
+        if (!audioContext) audioContext = new AudioContext();
+        if (audioContext.state === "suspended") await audioContext.resume();
+
+        const nativeRate = audioContext.sampleRate;
+        micSource = audioContext.createMediaStreamSource(micStream);
+        micProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+
+        micProcessor.onaudioprocess = (e) => {
+          if (!micActive || !ws || ws.readyState !== WebSocket.OPEN) return;
+          const raw = e.inputBuffer.getChannelData(0);
+          const ds = resample(raw, nativeRate, inputSampleRate);
+          const pcm16 = new Int16Array(ds.length);
+          for (let i = 0; i < ds.length; i++) {
+            pcm16[i] = Math.max(-32768, Math.min(32767, Math.round(ds[i] * 32768)));
+          }
+          ws.send(JSON.stringify({ type: "audio.append", audio: uint8ToBase64(new Uint8Array(pcm16.buffer)) }));
+        };
+
+        micSource.connect(micProcessor);
+        micProcessor.connect(audioContext.destination);
+        micActive = true;
+        micBtn.classList.remove("btn-ghost");
+        micBtn.classList.add("btn-primary", "recording");
+        micHint.textContent = "Listening — speak naturally";
+        setStatus("Listening…", true);
+      } catch (err) {
+        console.error("mic error:", err);
+        setStatus("Microphone access denied");
+      }
+    }
+
+    function stopMic() {
+      micActive = false;
+      if (micProcessor) { micProcessor.disconnect(); micProcessor = null; }
+      if (micSource) { micSource.disconnect(); micSource = null; }
+      if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+      micBtn.classList.remove("btn-primary", "recording");
+      micBtn.classList.add("btn-ghost");
+      micHint.textContent = "Mic off — tap to resume";
+      setStatus("Paused", false);
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "audio.commit" }));
+    }
+
+    // ── Session lifecycle ────────────────────────────────────────────────
+    startBtn.addEventListener("click", startSession);
+    endBtn.addEventListener("click", endSession);
+    micBtn.addEventListener("click", toggleMic);
+    document.addEventListener("keydown", (e) => {
+      if (session.classList.contains("hidden")) return;
+      if (e.code === "Space") { e.preventDefault(); toggleMic(); }
+    });
+
+    async function startSession() {
+      const target = targetSelect.value;
+      startBtn.disabled = true;
+      startBtn.textContent = "Minting ticket…";
+      try {
+        // Step 1: mint a ticket via our backend. The API key stays server-side.
+        const resp = await fetch("/api/realtime/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ target }),
+        });
+        if (!resp.ok) throw new Error((await resp.json()).error || resp.statusText);
+        const ticket = await resp.json();
+        targetLabel = ticket.targetLabel || target;
+
+        landing.classList.add("hidden");
+        session.classList.remove("hidden");
+        feed.innerHTML = "";
+        targetBadge.textContent = `→ ${targetLabel}`;
+        setStatus("Connecting…");
+
+        // Step 2: open the realtime WS directly against Opper, carrying the
+        // ticket in the Sec-WebSocket-Protocol subprotocol (not the URL).
+        ws = new WebSocket(ticket.wsBaseUrl, [`opper-ticket.${ticket.clientSecret}`]);
+
+        ws.onopen = () => {
+          // Model + target language are bound on the ticket, so an empty
+          // config is enough — the server fills the locked fields.
+          ws.send(JSON.stringify({ type: "session.start", config: {} }));
+        };
+        ws.onmessage = (evt) => {
+          try { handleServerEvent(JSON.parse(evt.data)); }
+          catch (err) { console.warn("[ws] parse error:", err); }
+        };
+        ws.onclose = (e) => {
+          setStatus("Disconnected", false);
+          if (!e.wasClean) addSource("Connection lost.");
+        };
+        ws.onerror = () => setStatus("Connection error", false);
+      } catch (err) {
+        console.error(err);
+        setStatus("Failed to start: " + err.message);
+        landing.classList.remove("hidden");
+        session.classList.add("hidden");
+      } finally {
+        startBtn.disabled = false;
+        startBtn.textContent = "Start translating";
+      }
+    }
+
+    function handleServerEvent(msg) {
+      switch (msg.type || "") {
+        case "session.started":
+          inputSampleRate = msg.input_sample_rate || msg.sample_rate || 16000;
+          outputSampleRate = msg.output_sample_rate || 24000;
+          setStatus("Connected — start speaking", true);
+          startMic();
+          return;
+
+        case "audio.delta":
+          if (msg.audio) playAudioChunk(msg.audio);
+          return;
+
+        // Source-language transcript of what the speaker said.
+        case "transcript.committed":
+          if (msg.transcript) addSource(msg.transcript);
+          finalizeXlt(); // a new utterance heard → close the prior translation
+          return;
+
+        // Streaming translated text (the words the model is speaking).
+        case "text.delta":
+          if (msg.delta) appendXlt(msg.delta);
+          return;
+
+        // Barge-in: the speaker started talking over the playback.
+        case "speech.started":
+          stopPlayback();
+          finalizeXlt();
+          return;
+
+        case "response.completed":
+        case "response.done":
+          finalizeXlt();
+          return;
+
+        case "session.terminating":
+          setStatus(`Session ending: ${msg.error?.message || msg.error?.code || ""}`);
+          return;
+
+        case "error": {
+          const m = msg.message || msg.error?.message || msg.error || "unknown";
+          // Mid-turn artifacts are normal; don't surface them.
+          if (typeof m === "string" && /cancel|buffer too small/i.test(m)) return;
+          setStatus("Error: " + m);
+          return;
+        }
+      }
+    }
+
+    function endSession() {
+      if (ws) { ws.close(); ws = null; }
+      stopMic();
+      stopPlayback();
+      if (audioContext) { audioContext.close(); audioContext = null; }
+      curXlt = null;
+      session.classList.add("hidden");
+      landing.classList.remove("hidden");
+    }
+  </script>
+</body>
+</html>

@@ -10,6 +10,7 @@ Examples and guides for building with [Opper](https://opper.ai). PRs are welcome
 | [content-analyzer](examples/content-analyzer/) | TypeScript | Parallel analysis, embeddings, knowledge base, streaming, text-to-speech, tracing |
 | [chatbot-openresponses](examples/chatbot-openresponses/) | TypeScript | OpenResponses endpoint via raw fetch(), agentic tool loop, image generation, TTS, web UI |
 | [brainstorm-time](examples/brainstorm-time/) | TypeScript | Realtime voice brainstorming — browser-direct WebSocket via ephemeral tickets, mic input, image generation, web search, live idea board |
+| [live-translate](examples/live-translate/) | TypeScript | Realtime speech-to-speech translation — browser-direct WebSocket via ephemeral tickets, model + target language locked on the ticket, live captions (Gemini 3.5 Live Translate) |
 | [opper-tour](examples/opper-tour/) | TypeScript | Realtime voice tour guide that drives a server-side Playwright Chromium and streams screenshots back to the browser — pre-baked Opper site map, URL allowlist, per-session BrowserContext |
 | [server-tools-compare](examples/server-tools-compare/) | TypeScript | Side-by-side web search: same question fanned out to Anthropic, OpenAI, and Google server-side tools through Opper compat — answer, cost, latency per provider |
 | [login-with-opper-web](examples/login-with-opper-web/) | JavaScript | OAuth login flow, token exchange, inference — Express web app with branded button |
