@@ -32,6 +32,10 @@ npm start                  # http://localhost:3000
 Get an API key at [platform.opper.ai](https://platform.opper.ai). In this mode every
 generation is billed to your own key.
 
+The server resolves a key the same way the Opper CLI / reachy agent do, in order:
+**`OPPER_API_KEY`** (env / `.env`) → **`~/.opper/config.json`** (so if you've run `opper login`
+it just works) → Login-with-Opper OAuth (below).
+
 ## Login with Opper (optional)
 
 To let visitors sign in and pay from their own Opper Wallet instead of your single key, set
@@ -50,7 +54,7 @@ proxies to the Opper REST API:
 | `GET /api/catalog` | The curated model list the UI renders from |
 | `POST /api/generate` | → `POST /v3/images` (stores results, returns `file_id` + url) |
 | `POST /api/files` | → `POST /v3/files` (upload a reference image) |
-| `GET /api/gallery` | → `GET /v3/files` (your saved creations) |
+| `GET /api/gallery` | Images you generated *in this app* (local per-account index) |
 | `GET /s/:fileId` | Re-presigns `/v3/files/{id}/content` and redirects — a durable share link |
 | `POST /api/intent` | → `POST /v3/call` with `output_schema` (free text → settings patch) |
 
@@ -59,6 +63,11 @@ on each request and redirects. The same route backs gallery thumbnails (`<img sr
 
 **Remix.** Because stored results come back with a `file_id`, "Remix" feeds a result straight
 back in as a `reference_images` / edit input — no re-upload.
+
+**Gallery scoping.** The `/v3/files` API has no tags/metadata and its list can't be filtered,
+so to show only images made *in this app* the server keeps a small local index
+(`data/creations.json`, gitignored) of the `file_id`s it generated, keyed by a hash of the
+account's API key. That also lets the gallery show each image's model and prompt.
 
 ## The model catalog
 
