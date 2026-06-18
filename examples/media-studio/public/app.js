@@ -9,6 +9,7 @@ const state = {
   catalog: [],
   model: null, // selected ModelEntry
   options: {}, // current generation options (dimension/quality/n)
+  references: [], // [{ file_id, preview }]
   sessionCost: 0,
 };
 
@@ -99,7 +100,87 @@ function selectModel(id) {
   document.querySelectorAll(".model-card").forEach((c) => c.classList.toggle("active", c.dataset.id === id));
   $("#advanced-toggle").hidden = false;
   renderAdvanced();
+  renderReferenceZone();
   updateGenerateEnabled();
+}
+
+// ---------------------------------------------------------------------------
+// Reference media — upload to /v3/files, reuse as reference / edit source
+// ---------------------------------------------------------------------------
+
+function maxRefs(m) {
+  if (m.supports.referenceImages) return 8;
+  if (m.supports.imageEdit) return 1;
+  return 0;
+}
+
+function renderReferenceZone() {
+  const zone = $("#reference-zone");
+  const max = maxRefs(state.model);
+  if (max === 0) {
+    zone.hidden = true;
+    state.references = [];
+    return;
+  }
+  zone.hidden = false;
+  if (state.references.length > max) state.references = state.references.slice(0, max);
+
+  const thumbs = state.references.map((ref, i) => {
+    const t = document.createElement("div");
+    t.className = "ref-thumb";
+    t.innerHTML = `<img src="${ref.preview}" alt="reference"/><button class="ref-x" title="Remove">×</button>`;
+    t.querySelector(".ref-x").addEventListener("click", () => {
+      state.references.splice(i, 1);
+      renderReferenceZone();
+    });
+    return t;
+  });
+
+  const addBtn = document.createElement("label");
+  addBtn.className = "ref-add";
+  const noun = state.model.supports.referenceImages ? "reference" : "image to edit";
+  addBtn.innerHTML = `+ Add ${noun}<input type="file" accept="image/*" hidden ${max > 1 ? "multiple" : ""}/>`;
+  addBtn.querySelector("input").addEventListener("change", (e) => onPickFiles(e.target.files));
+  if (state.references.length >= max) addBtn.style.display = "none";
+
+  zone.replaceChildren(...thumbs, addBtn);
+}
+
+async function onPickFiles(fileList) {
+  const max = maxRefs(state.model);
+  const files = [...fileList].slice(0, max - state.references.length);
+  for (const file of files) {
+    const preview = URL.createObjectURL(file);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/files", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) {
+        handleApiError(res.status, data);
+        continue;
+      }
+      state.references.push({ file_id: data.id, preview });
+      renderReferenceZone();
+    } catch (err) {
+      toast("Upload failed: " + err.message, true);
+    }
+  }
+}
+
+/** Remix: feed a generated result back in as a reference (no re-upload). */
+function remixFromResult(item, src) {
+  if (maxRefs(state.model) === 0) {
+    // Current model can't take references — switch to the capable default.
+    const capable = state.catalog.find((m) => m.supports.referenceImages) ?? state.model;
+    selectModel(capable.id);
+  }
+  const max = maxRefs(state.model);
+  if (state.references.length >= max) state.references = state.references.slice(0, max - 1);
+  state.references.push({ file_id: item.file_id, preview: src });
+  renderReferenceZone();
+  $("#prompt").focus();
+  toast("Added as reference — tweak the prompt and generate.");
 }
 
 // ---------------------------------------------------------------------------
@@ -216,6 +297,11 @@ async function generate() {
   setGenerating(true);
 
   const payload = { model: state.model.id, prompt, ...state.options };
+  if (state.references.length) {
+    const ids = state.references.map((r) => r.file_id);
+    if (state.model.supports.referenceImages) payload.reference_images = ids;
+    else if (state.model.supports.imageEdit) payload.image = ids[0];
+  }
 
   try {
     const res = await fetch("/api/generate", {
@@ -273,10 +359,14 @@ function fillResultCard(card, data, prompt) {
     <div class="result-meta">
       <span class="rm-cost">${state.model.label} · ${cost}</span>
       <div class="result-actions">
+        <button class="icon-btn" data-act="remix">⇄ Remix</button>
         <button class="icon-btn" data-act="download">Download</button>
       </div>
     </div>`;
   card.querySelector('[data-act="download"]').addEventListener("click", () => downloadImage(src, item));
+  const remixBtn = card.querySelector('[data-act="remix"]');
+  if (item.file_id) remixBtn.addEventListener("click", () => remixFromResult(item, src));
+  else remixBtn.remove(); // remix needs a stored file_id
 }
 
 function imageSrc(item) {

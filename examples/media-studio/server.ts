@@ -16,6 +16,7 @@ import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { randomUUID, randomBytes } from "crypto";
 import { createServer } from "net";
+import multer from "multer";
 import { CATALOG } from "./catalog.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -219,6 +220,27 @@ async function relayError(res: express.Response, upstream: Response) {
 
 /** The curated model catalog the UI renders from. */
 app.get("/api/catalog", (_req, res) => res.json({ models: CATALOG }));
+
+/** Upload a reference image — proxy to POST /v3/files, returns a reusable file_id. */
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+app.post("/api/files", upload.single("file"), async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ code: "disconnected", error: "Not logged in." });
+  if (!req.file) return res.status(400).json({ code: "bad_request", error: "No file uploaded." });
+
+  const fd = new FormData();
+  const bytes = new Uint8Array(req.file.buffer);
+  fd.append("file", new Blob([bytes], { type: req.file.mimetype }), req.file.originalname);
+  fd.append("purpose", "reference_media");
+
+  try {
+    const upstream = await opperFetch(session, "/v3/files", { method: "POST", body: fd });
+    if (!upstream.ok) return relayError(res, upstream);
+    res.json(await upstream.json());
+  } catch (err: any) {
+    res.status(502).json({ code: "network", error: err?.message || "Upload failed." });
+  }
+});
 
 /** Generate images — proxy to POST /v3/images. */
 app.post("/api/generate", async (req, res) => {
