@@ -113,8 +113,9 @@ modality-agnostic.
   running session total.
 - Click any image to inspect it full size.
 - **Serving cost.** Image bytes come straight from S3 via presigned URLs, not from Opper's API
-  (generation is the real cost; delivery is ~100× cheaper S3 egress). Presigned URLs rotate, so
-  to avoid re-downloading on every reload the server caches each file's URL for ~50 min and sets
-  `Cache-Control` on `/s/:fileId` — collapsing repeat presign calls and letting the browser
-  cache the image. At larger scale the bigger lever is platform-side (a CDN / stable URLs in
-  front of the bucket), which the client can't do.
+  (generation is the real cost; delivery is ~100× cheaper S3 egress). Presigned URLs rotate and
+  expire (~1h), so the server caches each file's URL for ~50 min: `/s/:fileId` re-issues that
+  stable URL on every request (collapsing repeat presign calls), and the browser caches the
+  actual image *bytes* by that URL. The redirect itself is `no-store` — caching it would pin a
+  thumbnail to one URL that later expires (→ broken image). At larger scale the bigger lever is
+  platform-side (a CDN / stable URLs in front of the bucket), which the client can't do.

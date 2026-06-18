@@ -636,7 +636,11 @@ app.get("/s/:fileId", async (req, res) => {
   try {
     const url = await presignedUrl(session, req.params.fileId);
     if (!url) return res.status(404).send("File not available.");
-    res.set("Cache-Control", "private, max-age=3000"); // let the browser cache the image
+    // Never cache the *redirect* — that would pin a thumbnail to one presigned
+    // URL that expires in ~1h (→ broken image later). Always re-issue from the
+    // server-side presign cache (≤50min), which keeps the target URL stable, so
+    // the browser still caches the actual image *bytes* by that URL.
+    res.set("Cache-Control", "no-store");
     res.redirect(url);
   } catch {
     res.status(502).send("Failed to reach Opper.");
