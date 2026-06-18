@@ -226,6 +226,22 @@ export const CATALOG: ModelEntry[] = [
     happyPath: { resolution: "480p", aspect_ratio: "16:9" },
   },
   {
+    id: "pruna/wan-i2v",
+    label: "Wan Image→Video",
+    provider: "Pruna",
+    modality: "video",
+    blurb: "Cheap, flat-rate image-to-video. Aspect follows your source image.",
+    approxCost: 0.1,
+    costUnit: "clip",
+    supports: {},
+    video: {
+      inputKind: "i2v",
+      requiresImage: true,
+      resolutions: { key: "resolution", options: ["480p", "720p"], default: "480p" },
+    },
+    happyPath: { resolution: "480p" },
+  },
+  {
     id: "vertexai/veo-3.1-generate-001",
     label: "Veo 3.1",
     provider: "Google",
