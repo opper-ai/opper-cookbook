@@ -16,6 +16,7 @@ import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { randomUUID, randomBytes } from "crypto";
 import { createServer } from "net";
+import { CATALOG } from "./catalog.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -176,6 +177,87 @@ app.post("/api/logout", (req, res) => {
   if (token) sessions.delete(token);
   res.setHeader("Set-Cookie", `${COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
   res.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------------
+// Opper proxy helpers
+// ---------------------------------------------------------------------------
+
+/** Call the Opper REST API with the session's key. Returns the raw Response. */
+function opperFetch(session: Session, path: string, init: RequestInit = {}) {
+  return fetch(`${OPPER_BASE_URL}${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${session.apiKey}`,
+      ...(init.headers || {}),
+    },
+  });
+}
+
+/** Map upstream auth/billing errors to a small, actionable shape for the SPA. */
+async function relayError(res: express.Response, upstream: Response) {
+  let detail = "";
+  try {
+    detail = await upstream.text();
+  } catch {}
+  if (upstream.status === 401) {
+    return res.status(401).json({ code: "disconnected", error: "Session is no longer connected to Opper." });
+  }
+  if (upstream.status === 402) {
+    return res.status(402).json({ code: "balance", error: "Opper Wallet balance is empty." });
+  }
+  let message = detail;
+  try {
+    message = JSON.parse(detail)?.error?.message || JSON.parse(detail)?.detail || detail;
+  } catch {}
+  return res.status(upstream.status).json({ code: "upstream", error: message || `Opper error ${upstream.status}` });
+}
+
+// ---------------------------------------------------------------------------
+// Studio API
+// ---------------------------------------------------------------------------
+
+/** The curated model catalog the UI renders from. */
+app.get("/api/catalog", (_req, res) => res.json({ models: CATALOG }));
+
+/** Generate images — proxy to POST /v3/images. */
+app.post("/api/generate", async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ code: "disconnected", error: "Not logged in." });
+
+  const b = req.body ?? {};
+  if (!b.model || !b.prompt) {
+    return res.status(400).json({ code: "bad_request", error: "model and prompt are required." });
+  }
+
+  // Forward only the fields /v3/images understands; default to storing so each
+  // result comes back with a reusable file_id and a presigned url.
+  const body: Record<string, unknown> = {
+    model: b.model,
+    prompt: b.prompt,
+    store: true,
+    n: b.n ?? 1,
+  };
+  if (b.size) body.size = b.size;
+  if (b.aspect_ratio) body.aspect_ratio = b.aspect_ratio;
+  if (b.quality) body.quality = b.quality;
+  if (b.image) body.image = b.image;
+  if (b.mask) body.mask = b.mask;
+  if (Array.isArray(b.reference_images) && b.reference_images.length) body.reference_images = b.reference_images;
+  if (b.parameters && typeof b.parameters === "object") body.parameters = b.parameters;
+
+  try {
+    const upstream = await opperFetch(session, "/v3/images", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!upstream.ok) return relayError(res, upstream);
+    const data = await upstream.json();
+    res.json(data);
+  } catch (err: any) {
+    res.status(502).json({ code: "network", error: err?.message || "Failed to reach Opper." });
+  }
 });
 
 // ---------------------------------------------------------------------------
