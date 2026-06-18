@@ -55,7 +55,9 @@ proxies to the Opper REST API:
 | `POST /api/generate` | → `POST /v3/images` (stores results, returns `file_id` + url) |
 | `POST /api/files` | → `POST /v3/files` (upload a reference image) |
 | `GET /api/gallery` | Images you generated *in this app* (local per-account index) |
-| `GET /s/:fileId` | Re-presigns `/v3/files/{id}/content` and redirects — a durable share link |
+| `GET /api/share/:id` | A fresh public S3 link for an image (reachable by anyone, ~1h) |
+| `DELETE /api/files/:id` | → `DELETE /v3/files/{id}` and drop it from the local index |
+| `GET /s/:fileId` | Presigns `/v3/files/{id}/content` (cached) and redirects — backs thumbnails |
 | `POST /api/intent` | → `POST /v3/call` with `output_schema` (free text → settings patch) |
 
 **Sharing.** Presigned file URLs only live ~1 hour, so a `/s/:fileId` link mints a fresh one
@@ -95,3 +97,10 @@ The seams are already in place:
   inline base64 image (remix/share are then unavailable for that result).
 - Per-generation cost comes from the `/v3/images` response (`usage.cost`); the header shows a
   running session total.
+- Click any image to inspect it full size.
+- **Serving cost.** Image bytes come straight from S3 via presigned URLs, not from Opper's API
+  (generation is the real cost; delivery is ~100× cheaper S3 egress). Presigned URLs rotate, so
+  to avoid re-downloading on every reload the server caches each file's URL for ~50 min and sets
+  `Cache-Control` on `/s/:fileId` — collapsing repeat presign calls and letting the browser
+  cache the image. At larger scale the bigger lever is platform-side (a CDN / stable URLs in
+  front of the bucket), which the client can't do.

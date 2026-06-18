@@ -61,6 +61,26 @@ async function boot() {
   $("#intent-input").addEventListener("keydown", (e) => {
     if (e.key === "Enter") runIntent();
   });
+
+  $("#lightbox").addEventListener("click", closeLightbox);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeLightbox();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Lightbox — click an image to inspect it full size
+// ---------------------------------------------------------------------------
+
+function openLightbox(src) {
+  if (!src) return;
+  $("#lightbox-img").src = src;
+  $("#lightbox").hidden = false;
+}
+
+function closeLightbox() {
+  $("#lightbox").hidden = true;
+  $("#lightbox-img").src = "";
 }
 
 // ---------------------------------------------------------------------------
@@ -163,6 +183,7 @@ function galleryCard(item) {
         <button class="icon-btn" data-act="delete" title="Delete file">🗑</button>
       </div>
     </div>`;
+  card.querySelector("img").addEventListener("click", () => openLightbox(src));
   card.querySelector('[data-act="remix"]').addEventListener("click", () => {
     remixFromResult({ file_id: fileId }, src);
     switchView("studio");
@@ -533,6 +554,7 @@ function fillResultCard(card, data, prompt) {
         <button class="icon-btn" data-act="download">Download</button>
       </div>
     </div>`;
+  card.querySelector("img").addEventListener("click", () => openLightbox(src));
   card.querySelector('[data-act="download"]').addEventListener("click", () => downloadImage(src, item));
   const remixBtn = card.querySelector('[data-act="remix"]');
   const shareBtn = card.querySelector('[data-act="share"]');

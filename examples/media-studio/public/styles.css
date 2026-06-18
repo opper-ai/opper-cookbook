@@ -308,6 +308,7 @@ body {
 }
 .result-card .img-wrap { position: relative; aspect-ratio: 1 / 1; background: var(--bg-input); }
 .result-card img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.result-card:not(.loading) img { cursor: zoom-in; }
 .result-card.loading .img-wrap { display: grid; place-items: center; gap: 10px; }
 .result-card.loading .elapsed { font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
 .result-meta { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
@@ -336,6 +337,25 @@ body {
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- Lightbox ---- */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.88);
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  cursor: zoom-out;
+}
+.lightbox img {
+  max-width: 92vw;
+  max-height: 92vh;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
 
 /* ---- Toast ---- */
 .toast {

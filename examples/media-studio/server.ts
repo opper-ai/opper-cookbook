@@ -312,6 +312,24 @@ async function relayError(res: express.Response, upstream: Response) {
   return res.status(upstream.status).json({ code: "upstream", error: message || `Opper error ${upstream.status}` });
 }
 
+// Presigned-URL cache. Presigning hits Opper + S3 on every call and rotates the
+// signature each time (so browsers can't cache the bytes). Caching the URL per
+// file for just under its ~1h lifetime collapses N presign calls into one and
+// keeps the redirect target stable, so the browser can cache the image.
+const presignCache = new Map<string, { url: string; exp: number }>();
+const PRESIGN_TTL_MS = 50 * 60 * 1000;
+
+async function presignedUrl(session: Session, fileId: string): Promise<string | null> {
+  const key = `${accountId(session.apiKey)}:${fileId}`;
+  const hit = presignCache.get(key);
+  if (hit && hit.exp > Date.now()) return hit.url;
+  const upstream = await opperFetch(session, `/v3/files/${encodeURIComponent(fileId)}/content`);
+  if (!upstream.ok) return null;
+  const { url } = await upstream.json();
+  if (url) presignCache.set(key, { url, exp: Date.now() + PRESIGN_TTL_MS });
+  return url ?? null;
+}
+
 // ---------------------------------------------------------------------------
 // Studio API
 // ---------------------------------------------------------------------------
@@ -510,6 +528,7 @@ app.delete("/api/files/:fileId", async (req, res) => {
     const upstream = await opperFetch(session, `/v3/files/${encodeURIComponent(fileId)}`, { method: "DELETE" });
     if (!upstream.ok) return relayError(res, upstream);
     removeCreation(session.apiKey, fileId);
+    presignCache.delete(`${accountId(session.apiKey)}:${fileId}`);
     console.log(`✓ delete  ${fileId}`);
     res.json(await upstream.json().catch(() => ({ deleted: true })));
   } catch (err: any) {
@@ -522,10 +541,9 @@ app.get("/api/share/:fileId", async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ code: "disconnected", error: "Not logged in." });
   try {
-    const upstream = await opperFetch(session, `/v3/files/${encodeURIComponent(req.params.fileId)}/content`);
-    if (!upstream.ok) return res.status(upstream.status).json({ error: "File not available." });
-    const { url } = await upstream.json();
-    res.json({ url: url ?? null });
+    const url = await presignedUrl(session, req.params.fileId);
+    if (!url) return res.status(404).json({ error: "File not available." });
+    res.json({ url });
   } catch (err: any) {
     res.status(502).json({ error: err?.message || "Failed to reach Opper." });
   }
@@ -541,10 +559,9 @@ app.get("/s/:fileId", async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).send("Not logged in.");
   try {
-    const upstream = await opperFetch(session, `/v3/files/${encodeURIComponent(req.params.fileId)}/content`);
-    if (!upstream.ok) return res.status(upstream.status).send("File not available.");
-    const { url } = await upstream.json();
-    if (!url) return res.status(404).send("No content URL.");
+    const url = await presignedUrl(session, req.params.fileId);
+    if (!url) return res.status(404).send("File not available.");
+    res.set("Cache-Control", "private, max-age=3000"); // let the browser cache the image
     res.redirect(url);
   } catch {
     res.status(502).send("Failed to reach Opper.");
