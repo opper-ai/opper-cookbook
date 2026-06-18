@@ -282,6 +282,44 @@ app.post("/api/generate", async (req, res) => {
   }
 });
 
+/** Your saved creations — list generated images from /v3/files. */
+app.get("/api/gallery", async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ code: "disconnected", error: "Not logged in." });
+  const limit = Math.min(parseInt(String(req.query.limit ?? "40")) || 40, 100);
+  try {
+    const upstream = await opperFetch(session, `/v3/files?limit=${limit}&offset=0`);
+    if (!upstream.ok) return relayError(res, upstream);
+    const list = await upstream.json();
+    const items = (list.data ?? [])
+      .filter((f: any) => f.purpose === "generated_image" || String(f.mime_type).startsWith("image/"))
+      .map((f: any) => ({ id: f.id, mime_type: f.mime_type, bytes: f.bytes, created_at: f.created_at }));
+    res.json({ items });
+  } catch (err: any) {
+    res.status(502).json({ code: "network", error: err?.message || "Failed to reach Opper." });
+  }
+});
+
+/**
+ * Share / thumbnail route. Presigned file URLs only live ~1h, so we mint a
+ * fresh one on each request and redirect. A `/s/:fileId` link stays valid
+ * indefinitely (as long as the file exists), and <img src="/s/:id"> works as a
+ * gallery thumbnail.
+ */
+app.get("/s/:fileId", async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).send("Not logged in.");
+  try {
+    const upstream = await opperFetch(session, `/v3/files/${encodeURIComponent(req.params.fileId)}/content`);
+    if (!upstream.ok) return res.status(upstream.status).send("File not available.");
+    const { url } = await upstream.json();
+    if (!url) return res.status(404).send("No content URL.");
+    res.redirect(url);
+  } catch {
+    res.status(502).send("Failed to reach Opper.");
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------

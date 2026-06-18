@@ -45,6 +45,12 @@
 
         <!-- Center: compose + results -->
         <section class="canvas">
+          <div class="tabs">
+            <button class="tab active" data-view="studio">Studio</button>
+            <button class="tab" data-view="gallery">Gallery</button>
+          </div>
+
+          <div id="view-studio">
           <div class="composer">
             <div class="intent-bar" id="intent-bar" hidden>
               <span class="intent-spark">✦</span>
@@ -70,6 +76,12 @@
           <div id="results" class="results"></div>
           <div id="empty-state" class="empty-state">
             <p>Your creations will appear here.</p>
+          </div>
+          </div>
+
+          <div id="view-gallery" hidden>
+            <div id="gallery" class="results"></div>
+            <div id="gallery-empty" class="empty-state"><p>No saved creations yet.</p></div>
           </div>
         </section>
       </main>

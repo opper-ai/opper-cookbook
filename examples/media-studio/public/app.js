@@ -54,6 +54,60 @@ async function boot() {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") generate();
   });
   $("#advanced-toggle").addEventListener("click", toggleAdvanced);
+  document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => switchView(t.dataset.view)));
+}
+
+// ---------------------------------------------------------------------------
+// Views: studio / gallery
+// ---------------------------------------------------------------------------
+
+function switchView(view) {
+  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.view === view));
+  $("#view-studio").hidden = view !== "studio";
+  $("#view-gallery").hidden = view !== "gallery";
+  if (view === "gallery") loadGallery();
+}
+
+async function loadGallery() {
+  const grid = $("#gallery");
+  const empty = $("#gallery-empty");
+  grid.replaceChildren();
+  empty.hidden = true;
+  try {
+    const res = await fetch("/api/gallery");
+    const data = await res.json();
+    if (!res.ok) return handleApiError(res.status, data);
+    if (!data.items?.length) {
+      empty.hidden = false;
+      return;
+    }
+    grid.replaceChildren(...data.items.map(galleryCard));
+  } catch (err) {
+    toast("Could not load gallery: " + err.message, true);
+  }
+}
+
+function galleryCard(item) {
+  const src = `/s/${item.file_id ?? item.id}`;
+  const fileId = item.id ?? item.file_id;
+  const card = document.createElement("div");
+  card.className = "result-card";
+  card.innerHTML = `
+    <div class="img-wrap"><img loading="lazy" src="${src}" alt="saved creation"/></div>
+    <div class="result-meta">
+      <div class="result-actions">
+        <button class="icon-btn" data-act="remix">⇄ Remix</button>
+        <button class="icon-btn" data-act="share">Share</button>
+        <button class="icon-btn" data-act="download">Download</button>
+      </div>
+    </div>`;
+  card.querySelector('[data-act="remix"]').addEventListener("click", () => {
+    remixFromResult({ file_id: fileId }, src);
+    switchView("studio");
+  });
+  card.querySelector('[data-act="share"]').addEventListener("click", () => copyShareLink(fileId));
+  card.querySelector('[data-act="download"]').addEventListener("click", () => downloadImage(src, { file_id: fileId, mime_type: item.mime_type }));
+  return card;
 }
 
 // ---------------------------------------------------------------------------
@@ -360,13 +414,32 @@ function fillResultCard(card, data, prompt) {
       <span class="rm-cost">${state.model.label} · ${cost}</span>
       <div class="result-actions">
         <button class="icon-btn" data-act="remix">⇄ Remix</button>
+        <button class="icon-btn" data-act="share">Share</button>
         <button class="icon-btn" data-act="download">Download</button>
       </div>
     </div>`;
   card.querySelector('[data-act="download"]').addEventListener("click", () => downloadImage(src, item));
   const remixBtn = card.querySelector('[data-act="remix"]');
-  if (item.file_id) remixBtn.addEventListener("click", () => remixFromResult(item, src));
-  else remixBtn.remove(); // remix needs a stored file_id
+  const shareBtn = card.querySelector('[data-act="share"]');
+  if (item.file_id) {
+    remixBtn.addEventListener("click", () => remixFromResult(item, src));
+    shareBtn.addEventListener("click", () => copyShareLink(item.file_id));
+  } else {
+    // Remix and share both need a stored file_id.
+    remixBtn.remove();
+    shareBtn.remove();
+  }
+}
+
+async function copyShareLink(fileId) {
+  if (!fileId) return toast("No shareable link (image wasn't stored).", true);
+  const url = `${location.origin}/s/${fileId}`;
+  try {
+    await navigator.clipboard.writeText(url);
+    toast("Share link copied to clipboard.");
+  } catch {
+    toast(url);
+  }
 }
 
 function imageSrc(item) {
