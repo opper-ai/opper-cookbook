@@ -64,8 +64,15 @@ async function boot() {
   });
 
   $("#lightbox").addEventListener("click", closeLightbox);
+  $("#picker").addEventListener("click", (e) => {
+    if (e.target.id === "picker") closePicker();
+  });
+  $("#picker-close").addEventListener("click", closePicker);
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeLightbox();
+    if (e.key === "Escape") {
+      closeLightbox();
+      closePicker();
+    }
   });
 }
 
@@ -82,6 +89,73 @@ function openLightbox(src) {
 function closeLightbox() {
   $("#lightbox").hidden = true;
   $("#lightbox-img").src = "";
+}
+
+// ---------------------------------------------------------------------------
+// Gallery picker — choose a stored image as a reference / source
+// ---------------------------------------------------------------------------
+
+let pickerOnPick = null;
+
+async function openPicker(onPick) {
+  pickerOnPick = onPick;
+  const grid = $("#picker-grid");
+  grid.replaceChildren();
+  $("#picker").hidden = false;
+  try {
+    const { items } = await (await fetch("/api/gallery")).json();
+    const imgs = (items || []).filter((i) => i.kind !== "video");
+    if (!imgs.length) {
+      grid.innerHTML = '<p class="muted" style="padding:20px">No saved images yet.</p>';
+      return;
+    }
+    grid.replaceChildren(
+      ...imgs.map((it) => {
+        const b = document.createElement("button");
+        b.className = "picker-item";
+        b.title = it.prompt || "";
+        b.innerHTML = `<img loading="lazy" src="/s/${it.file_id}" alt=""/>`;
+        b.addEventListener("click", () => {
+          const pick = pickerOnPick;
+          closePicker();
+          pick?.({ file_id: it.file_id, preview: `/s/${it.file_id}` });
+        });
+        return b;
+      }),
+    );
+  } catch {
+    grid.innerHTML = '<p class="muted" style="padding:20px">Could not load gallery.</p>';
+  }
+}
+
+function closePicker() {
+  $("#picker").hidden = true;
+  pickerOnPick = null;
+}
+
+/** Add an image (uploaded or picked) to the current model's input, respecting its max. */
+function addReference(ref) {
+  const max = maxRefs(state.model);
+  if (max === 0) return;
+  if (state.references.length >= max) state.references = state.references.slice(0, max - 1);
+  state.references.push(ref);
+  renderReferenceZone();
+  updateGenerateEnabled();
+}
+
+/** Animate an image into a video: switch to an image-to-video model with it as the source. */
+function animateImage(fileId, src) {
+  const i2v = state.catalog.find((m) => m.modality === "video" && m.video && m.video.inputKind !== "t2v");
+  if (!i2v) return toast("No image-to-video model available.", true);
+  state.modality = "video";
+  renderModalities();
+  renderModels();
+  selectModel(i2v.id);
+  state.references = [{ file_id: fileId, preview: src }];
+  renderReferenceZone();
+  updateGenerateEnabled();
+  switchView("studio");
+  toast(`Source image set on ${i2v.label} — adjust options and Generate.`);
 }
 
 // ---------------------------------------------------------------------------
@@ -183,6 +257,7 @@ function galleryCard(item) {
       <span class="rm-cost" title="${esc(item.prompt || "")}">${esc(item.model || "")}</span>
       <div class="result-actions">
         ${isVideo ? "" : '<button class="icon-btn" data-act="remix">⇄ Remix</button>'}
+        ${isVideo ? "" : '<button class="icon-btn" data-act="animate">🎬 Video</button>'}
         <button class="icon-btn" data-act="share">Share</button>
         <button class="icon-btn" data-act="download">Download</button>
         <button class="icon-btn" data-act="delete" title="Delete file">🗑</button>
@@ -194,6 +269,7 @@ function galleryCard(item) {
       remixFromResult({ file_id: fileId }, src);
       switchView("studio");
     });
+    card.querySelector('[data-act="animate"]').addEventListener("click", () => animateImage(fileId, src));
   }
   card.querySelector('[data-act="share"]').addEventListener("click", () => copyShareLink(fileId));
   card.querySelector('[data-act="download"]').addEventListener("click", () =>
@@ -368,9 +444,14 @@ function renderReferenceZone() {
   const need = spec.required ? " (required)" : "";
   addBtn.innerHTML = `+ Add ${spec.noun}${need}<input type="file" accept="image/*" hidden ${spec.max > 1 ? "multiple" : ""}/>`;
   addBtn.querySelector("input").addEventListener("change", (e) => onPickFiles(e.target.files));
-  if (state.references.length >= spec.max) addBtn.style.display = "none";
 
-  zone.replaceChildren(...thumbs, addBtn);
+  const pickBtn = document.createElement("button");
+  pickBtn.className = "ref-pick";
+  pickBtn.textContent = "Choose from gallery";
+  pickBtn.addEventListener("click", () => openPicker(addReference));
+
+  const controls = state.references.length >= spec.max ? [] : [addBtn, pickBtn];
+  zone.replaceChildren(...thumbs, ...controls);
 }
 
 async function onPickFiles(fileList) {
@@ -725,6 +806,7 @@ function fillResultCard(card, data, prompt) {
       <span class="rm-cost">${state.model.label} · ${cost}</span>
       <div class="result-actions">
         <button class="icon-btn" data-act="remix">⇄ Remix</button>
+        <button class="icon-btn" data-act="animate">🎬 Video</button>
         <button class="icon-btn" data-act="share">Share</button>
         <button class="icon-btn" data-act="download">Download</button>
       </div>
@@ -732,13 +814,16 @@ function fillResultCard(card, data, prompt) {
   card.querySelector("img").addEventListener("click", () => openLightbox(src));
   card.querySelector('[data-act="download"]').addEventListener("click", () => downloadImage(src, item));
   const remixBtn = card.querySelector('[data-act="remix"]');
+  const animateBtn = card.querySelector('[data-act="animate"]');
   const shareBtn = card.querySelector('[data-act="share"]');
   if (item.file_id) {
     remixBtn.addEventListener("click", () => remixFromResult(item, src));
+    animateBtn.addEventListener("click", () => animateImage(item.file_id, src));
     shareBtn.addEventListener("click", () => copyShareLink(item.file_id));
   } else {
-    // Remix and share both need a stored file_id.
+    // Remix, animate and share all need a stored file_id.
     remixBtn.remove();
+    animateBtn.remove();
     shareBtn.remove();
   }
 }
