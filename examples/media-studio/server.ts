@@ -14,9 +14,10 @@
 import express from "express";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
-import { randomUUID, randomBytes } from "crypto";
+import { randomUUID, randomBytes, createHash } from "crypto";
 import { createServer } from "net";
-import { existsSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
+import { homedir } from "os";
 import multer from "multer";
 import { CATALOG } from "./catalog.js";
 
@@ -44,16 +45,47 @@ const API_HOST = (() => {
     return OPPER_BASE_URL;
   }
 })();
-const ENV_API_KEY = process.env.OPPER_API_KEY?.trim() || "";
-
 const CLIENT_ID = process.env.CLIENT_ID?.trim() || "";
 const CLIENT_SECRET = process.env.CLIENT_SECRET?.trim() || "";
 const OAUTH_ENABLED = Boolean(CLIENT_ID && CLIENT_SECRET);
 
-if (!ENV_API_KEY && !OAUTH_ENABLED) {
+/**
+ * Local key resolution, mirroring the Opper CLI / reachy order:
+ *   1. OPPER_API_KEY (env / .env)
+ *   2. ~/.opper/config.json default slot (i.e. you ran `opper login`)
+ * Falls through to Login-with-Opper OAuth when CLIENT_ID/SECRET are set.
+ */
+function readOpperCliSlot(): { apiKey: string; user?: { email?: string; name?: string } } | null {
+  try {
+    const home = process.env.OPPER_HOME || join(homedir(), ".opper");
+    const cfg = JSON.parse(readFileSync(join(home, "config.json"), "utf8"));
+    const key = cfg.defaultKey || "default";
+    const slot = cfg.keys?.[key];
+    if (slot?.apiKey) return { apiKey: slot.apiKey, user: slot.user };
+  } catch {}
+  return null;
+}
+
+const ENV_API_KEY = process.env.OPPER_API_KEY?.trim() || "";
+const cliSlot = ENV_API_KEY ? null : readOpperCliSlot();
+const LOCAL_KEY = ENV_API_KEY || cliSlot?.apiKey || "";
+const LOCAL_USER: User = ENV_API_KEY
+  ? { name: API_HOST }
+  : cliSlot
+    ? { name: cliSlot.user?.email || cliSlot.user?.name || API_HOST, email: cliSlot.user?.email }
+    : { name: API_HOST };
+const LOCAL_SOURCE = ENV_API_KEY
+  ? "OPPER_API_KEY (env)"
+  : cliSlot
+    ? `Opper CLI ~/.opper (${LOCAL_USER.name})`
+    : "";
+
+if (!LOCAL_KEY && !OAUTH_ENABLED) {
   console.error(
-    "\nMissing config. Set OPPER_API_KEY for quick start, or CLIENT_ID + CLIENT_SECRET\n" +
-      "for Login with Opper. Copy .env.example to .env and fill it in.\n",
+    "\nNo Opper credentials found. Either:\n" +
+      "  - set OPPER_API_KEY in env / .env, or\n" +
+      "  - run `opper login` (the CLI stores a key this app reads), or\n" +
+      "  - set CLIENT_ID + CLIENT_SECRET for Login with Opper.\n",
   );
   process.exit(1);
 }
@@ -114,10 +146,48 @@ function newSession(session: Session): string {
 function getSession(req: express.Request): Session | undefined {
   const token = readCookie(req, COOKIE);
   if (token && sessions.has(token)) return sessions.get(token);
-  if (!OAUTH_ENABLED && ENV_API_KEY) {
-    return { apiKey: ENV_API_KEY, user: { name: API_HOST } };
+  if (!OAUTH_ENABLED && LOCAL_KEY) {
+    return { apiKey: LOCAL_KEY, user: LOCAL_USER };
   }
   return undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Creations index
+// ---------------------------------------------------------------------------
+// The /v3/files list can't be filtered or tagged, so to scope the gallery to
+// images made *in this app* we keep a small local index of the file_ids we
+// generated, per Opper account. Survives restarts; also lets the gallery show
+// the model + prompt, which the raw files list doesn't carry.
+
+type Creation = { account: string; file_id: string; model: string; prompt: string; created: number };
+
+const DATA_DIR = join(__dirname, "data");
+const CREATIONS_FILE = join(DATA_DIR, "creations.json");
+
+/** Stable per-account id (never the raw key). */
+function accountId(apiKey: string): string {
+  return createHash("sha256").update(apiKey).digest("hex").slice(0, 12);
+}
+
+function loadCreations(): Creation[] {
+  try {
+    return JSON.parse(readFileSync(CREATIONS_FILE, "utf8"));
+  } catch {
+    return [];
+  }
+}
+
+function addCreations(entries: Creation[]): void {
+  if (!entries.length) return;
+  const all = loadCreations();
+  all.push(...entries);
+  try {
+    if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
+    writeFileSync(CREATIONS_FILE, JSON.stringify(all));
+  } catch (err) {
+    console.warn("could not persist creations:", (err as Error)?.message);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -308,6 +378,19 @@ app.post("/api/generate", async (req, res) => {
     }
     const data = await upstream.json();
     console.log(`✓ images  ${body.model}  ${Date.now() - started}ms  $${data.usage?.cost ?? "?"}`);
+    // Record stored results so the gallery can scope to this app.
+    const acct = accountId(session.apiKey);
+    addCreations(
+      (data.data ?? [])
+        .filter((d: any) => d.file_id)
+        .map((d: any) => ({
+          account: acct,
+          file_id: d.file_id as string,
+          model: String(body.model),
+          prompt: String(body.prompt),
+          created: Date.now(),
+        })),
+    );
     res.json(data);
   } catch (err: any) {
     console.error(`✗ images  ${body.model}  ${err?.message}`);
@@ -389,22 +472,17 @@ app.post("/api/intent", async (req, res) => {
   }
 });
 
-/** Your saved creations — list generated images from /v3/files. */
-app.get("/api/gallery", async (req, res) => {
+/** Your saved creations — images generated in this app (scoped to your account). */
+app.get("/api/gallery", (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ code: "disconnected", error: "Not logged in." });
-  const limit = Math.min(parseInt(String(req.query.limit ?? "40")) || 40, 100);
-  try {
-    const upstream = await opperFetch(session, `/v3/files?limit=${limit}&offset=0`);
-    if (!upstream.ok) return relayError(res, upstream);
-    const list = await upstream.json();
-    const items = (list.data ?? [])
-      .filter((f: any) => f.purpose === "generated_image" || String(f.mime_type).startsWith("image/"))
-      .map((f: any) => ({ id: f.id, mime_type: f.mime_type, bytes: f.bytes, created_at: f.created_at }));
-    res.json({ items });
-  } catch (err: any) {
-    res.status(502).json({ code: "network", error: err?.message || "Failed to reach Opper." });
-  }
+  const acct = accountId(session.apiKey);
+  const items = loadCreations()
+    .filter((c) => c.account === acct)
+    .sort((a, b) => b.created - a.created)
+    .slice(0, 60)
+    .map((c) => ({ file_id: c.file_id, model: c.model, prompt: c.prompt, created: c.created }));
+  res.json({ items });
 });
 
 /**
@@ -436,5 +514,5 @@ app.listen(PORT, () => {
   console.log(`\n  Media Studio`);
   console.log(`  http://localhost:${PORT}`);
   console.log(`  API:  ${OPPER_BASE_URL}`);
-  console.log(`  Auth: ${OAUTH_ENABLED ? "Login with Opper (OAuth)" : "OPPER_API_KEY (env)"}\n`);
+  console.log(`  Auth: ${OAUTH_ENABLED ? "Login with Opper (OAuth)" : LOCAL_SOURCE}\n`);
 });

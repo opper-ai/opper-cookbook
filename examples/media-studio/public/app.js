@@ -148,13 +148,14 @@ async function loadGallery() {
 }
 
 function galleryCard(item) {
-  const src = `/s/${item.file_id ?? item.id}`;
-  const fileId = item.id ?? item.file_id;
+  const fileId = item.file_id;
+  const src = `/s/${fileId}`;
   const card = document.createElement("div");
   card.className = "result-card";
   card.innerHTML = `
-    <div class="img-wrap"><img loading="lazy" src="${src}" alt="saved creation"/></div>
+    <div class="img-wrap"><img loading="lazy" src="${src}" alt="${esc(item.prompt || "saved creation")}"/></div>
     <div class="result-meta">
+      <span class="rm-cost" title="${esc(item.prompt || "")}">${esc(item.model || "")}</span>
       <div class="result-actions">
         <button class="icon-btn" data-act="remix">⇄ Remix</button>
         <button class="icon-btn" data-act="share">Share</button>

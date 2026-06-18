@@ -57,3 +57,5 @@ examples/opper-tour/PLAN.md
 
 # Local design notes for media-studio — stay out of the published example
 examples/media-studio/PLAN.md
+# Local per-account index of generations made in the app
+examples/media-studio/data/
