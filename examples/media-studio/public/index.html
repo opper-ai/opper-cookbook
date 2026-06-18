@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Media Studio · Opper</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <!-- Landing / login gate (shown when not logged in under OAuth) -->
+    <section id="gate" class="gate" hidden>
+      <div class="gate-card">
+        <div class="brand-mark">◐</div>
+        <h1>Media Studio</h1>
+        <p class="muted">Generate images with any model on Opper. Pick what to make, pick a
+          model, get a great result — billed from your Opper Wallet.</p>
+        <a id="login-btn" class="btn btn-primary" href="/login">Login with Opper</a>
+        <p id="gate-error" class="error" hidden></p>
+      </div>
+    </section>
+
+    <!-- Studio -->
+    <div id="studio" class="studio" hidden>
+      <header class="topbar">
+        <div class="brand"><span class="brand-mark">◐</span> Media Studio</div>
+        <div class="topbar-right">
+          <span id="session-cost" class="cost-pill" title="Spent this session">$0.000</span>
+          <span id="user-chip" class="user-chip"></span>
+        </div>
+      </header>
+
+      <main class="layout">
+        <!-- Left rail: modality + model picker -->
+        <aside class="rail">
+          <div class="rail-section">
+            <h2 class="rail-title">Create</h2>
+            <div id="modality-list" class="modality-list"></div>
+          </div>
+          <div class="rail-section">
+            <h2 class="rail-title">Model</h2>
+            <div id="model-list" class="model-list"></div>
+          </div>
+        </aside>
+
+        <!-- Center: compose + results -->
+        <section class="canvas">
+          <div class="composer">
+            <div class="intent-bar" id="intent-bar" hidden>
+              <span class="intent-spark">✦</span>
+              <input id="intent-input" type="text"
+                placeholder="Describe what you want — e.g. “cinematic fox portrait, 9:16, painterly”" />
+              <button id="intent-go" class="btn btn-ghost">Set up</button>
+            </div>
+
+            <textarea id="prompt" class="prompt" rows="3"
+              placeholder="A prompt… or use the smart bar above to fill everything in."></textarea>
+
+            <div id="reference-zone" class="reference-zone" hidden></div>
+
+            <div class="composer-actions">
+              <button id="advanced-toggle" class="btn btn-ghost" hidden>▸ Advanced options</button>
+              <div class="spacer"></div>
+              <button id="generate-btn" class="btn btn-primary" disabled>Generate</button>
+            </div>
+
+            <div id="advanced-panel" class="advanced-panel" hidden></div>
+          </div>
+
+          <div id="results" class="results"></div>
+          <div id="empty-state" class="empty-state">
+            <p>Your creations will appear here.</p>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" hidden></div>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
