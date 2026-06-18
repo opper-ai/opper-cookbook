@@ -16,10 +16,20 @@ import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { randomUUID, randomBytes } from "crypto";
 import { createServer } from "net";
+import { existsSync } from "fs";
 import multer from "multer";
 import { CATALOG } from "./catalog.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Load a local .env if present (no dependency — Node 20.12+ built-in). Values
+// already set in the shell environment win, so exporting OPPER_API_KEY works too.
+const envFile = join(__dirname, ".env");
+if (existsSync(envFile) && typeof process.loadEnvFile === "function") {
+  try {
+    process.loadEnvFile(envFile);
+  } catch {}
+}
 
 // ---------------------------------------------------------------------------
 // Config
