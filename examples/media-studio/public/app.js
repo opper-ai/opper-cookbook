@@ -426,14 +426,14 @@ async function generate() {
     });
     const data = await res.json();
     if (!res.ok) {
-      card.remove();
+      clearCard(card);
       handleApiError(res.status, data);
       return;
     }
     fillResultCard(card, data, prompt);
     if (data.usage?.cost) bumpCost(data.usage.cost);
   } catch (err) {
-    card.remove();
+    clearCard(card);
     toast("Network error: " + err.message, true);
   } finally {
     setGenerating(false);
@@ -454,12 +454,23 @@ function setGenerating(on) {
 function addLoadingCard() {
   const card = document.createElement("div");
   card.className = "result-card loading";
-  card.innerHTML = `<div class="img-wrap"><div class="spinner"></div></div>`;
+  card.innerHTML = `<div class="img-wrap"><div class="spinner"></div><div class="elapsed">0s</div></div>`;
   $("#results").prepend(card);
+  const t0 = Date.now();
+  card._timer = setInterval(() => {
+    const el = card.querySelector(".elapsed");
+    if (el) el.textContent = Math.round((Date.now() - t0) / 1000) + "s";
+  }, 1000);
   return card;
 }
 
+function clearCard(card) {
+  clearInterval(card._timer);
+  card.remove();
+}
+
 function fillResultCard(card, data, prompt) {
+  clearInterval(card._timer);
   const item = data.data?.[0];
   if (!item) {
     card.remove();
@@ -494,12 +505,20 @@ function fillResultCard(card, data, prompt) {
 
 async function copyShareLink(fileId) {
   if (!fileId) return toast("No shareable link (image wasn't stored).", true);
-  const url = `${location.origin}/s/${fileId}`;
+  // Copy the public presigned S3 URL — reachable by anyone (expires in ~1h),
+  // which is what works when the studio runs locally.
   try {
+    const { url } = await (await fetch(`/api/share/${fileId}`)).json();
+    if (!url) throw new Error("no url");
     await navigator.clipboard.writeText(url);
-    toast("Share link copied to clipboard.");
+    toast("Public link copied — opens for anyone, expires in ~1h.");
   } catch {
-    toast(url);
+    // Fallback: the durable app link (only works when the app is hosted).
+    const link = `${location.origin}/s/${fileId}`;
+    try {
+      await navigator.clipboard.writeText(link);
+    } catch {}
+    toast(link);
   }
 }
 

@@ -308,7 +308,8 @@ body {
 }
 .result-card .img-wrap { position: relative; aspect-ratio: 1 / 1; background: var(--bg-input); }
 .result-card img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.result-card.loading .img-wrap { display: grid; place-items: center; }
+.result-card.loading .img-wrap { display: grid; place-items: center; gap: 10px; }
+.result-card.loading .elapsed { font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
 .result-meta { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
 .result-meta .rm-cost { font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
 .result-actions { display: flex; gap: 6px; }

@@ -486,6 +486,25 @@ app.get("/api/gallery", (req, res) => {
 });
 
 /**
+ * Return a fresh public S3 link for a file. Unlike `/s/:fileId` (which points
+ * at this server, so only works when the app is hosted somewhere reachable),
+ * the presigned URL is a public AWS link anyone can open — it just expires in
+ * ~1h. That's the right thing to "Share" from a locally-run studio.
+ */
+app.get("/api/share/:fileId", async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ code: "disconnected", error: "Not logged in." });
+  try {
+    const upstream = await opperFetch(session, `/v3/files/${encodeURIComponent(req.params.fileId)}/content`);
+    if (!upstream.ok) return res.status(upstream.status).json({ error: "File not available." });
+    const { url } = await upstream.json();
+    res.json({ url: url ?? null });
+  } catch (err: any) {
+    res.status(502).json({ error: err?.message || "Failed to reach Opper." });
+  }
+});
+
+/**
  * Share / thumbnail route. Presigned file URLs only live ~1h, so we mint a
  * fresh one on each request and redirect. A `/s/:fileId` link stays valid
  * indefinitely (as long as the file exists), and <img src="/s/:id"> works as a
