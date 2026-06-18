@@ -23,6 +23,10 @@
 
 * { box-sizing: border-box; }
 
+/* The `hidden` attribute must win over class-level `display` rules
+   (e.g. .gate/.studio set display, which would otherwise override it). */
+[hidden] { display: none !important; }
+
 html, body { height: 100%; }
 
 body {
