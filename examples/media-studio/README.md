@@ -2,12 +2,14 @@
 
 A click-first **media generation studio** built on Opper. Log in, pick what to make, pick a
 model, and get a great result on the happy path — "Advanced options" stay tucked away until
-you want them. Images today; the app is structured to grow into video and audio.
+you want them. Images and video today; structured to grow into audio next.
 
 It showcases a lot of Opper in one small app:
 
 - **`/v3/images`** — synchronous image generation across many providers (OpenAI, Google,
   xAI, Pruna, Black Forest Labs) from one catalog.
+- **`/v3/videos`** — asynchronous text/image-to-video (Alibaba HappyHorse, xAI, Pruna, Veo):
+  submit a job, poll, then play the clip inline.
 - **`/v3/files`** — every result is stored, so it's reusable as a reference and shareable.
 - **`/v3/call`** with `output_schema` — the smart "intent bar" turns a sentence into
   prefilled settings (a structured-output demo).
@@ -78,17 +80,29 @@ from `catalog.ts`. Each entry declares its dimension style (pixel `size` vs `asp
 quality tiers, reference support, and a `happyPath` of great defaults. **Adding a model is a
 data edit**, not a UI change.
 
-## Extending to video / audio
+## Video
 
-The seams are already in place:
+Video uses the same catalog/picker/gallery shell as images, with one difference: it's
+**asynchronous**. `POST /v3/videos` returns a job id, the client polls
+`GET /v3/artifacts/{id}/status` until `completed`, and the clip plays inline. Unlike images,
+video's per-model knobs (duration, resolution, aspect) aren't top-level fields — they go in
+`parameters`, and the **keys and values are provider-specific** (Veo uses `durationSeconds` /
+`aspectRatio`; HappyHorse wants `resolution: "720P"` uppercase). Each catalog entry's `video`
+block carries the right keys, and `happyPath` is the baseline `parameters` object.
 
-1. Add entries to `catalog.ts` with `modality: "video"` (or `"audio"`) and flip the modality
-   to `live: true` in `public/app.js` (`MODALITIES`).
-2. Video on Opper is **asynchronous** (`POST /v3/videos` returns a job to poll) — add a poller
-   alongside `/api/generate` and render progress on the result card. Audio (`/v3/audio/speech`)
-   is synchronous like images.
-3. The picker, advanced options, gallery, and share routes all work unchanged — they're driven
-   by the catalog and the files API, both modality-agnostic.
+Image-to-video models reuse the reference-upload flow; ones that *require* a source image
+(e.g. HappyHorse i2v) gate Generate until you add one.
+
+> The default video model (HappyHorse text-to-video) is live-verified. The other video entries
+> follow the model specs but aren't all individually verified — provider param casing is fiddly,
+> so check the server log if one fails (errors are relayed verbatim).
+
+## Extending to audio
+
+The seams are in place: add `modality: "audio"` entries to `catalog.ts`, flip Audio to
+`live: true` in `public/app.js` (`MODALITIES`), and point Generate at `/v3/audio/speech`
+(synchronous, like images). The picker, advanced options, gallery, share, and delete are all
+modality-agnostic.
 
 ## Notes
 
