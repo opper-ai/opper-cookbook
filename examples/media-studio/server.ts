@@ -37,6 +37,13 @@ if (existsSync(envFile) && typeof process.loadEnvFile === "function") {
 
 const PREFERRED_PORT = parseInt(process.env.PORT || "3000");
 const OPPER_BASE_URL = (process.env.OPPER_BASE_URL || "https://api.opper.ai").replace(/\/$/, "");
+const API_HOST = (() => {
+  try {
+    return new URL(OPPER_BASE_URL).host;
+  } catch {
+    return OPPER_BASE_URL;
+  }
+})();
 const ENV_API_KEY = process.env.OPPER_API_KEY?.trim() || "";
 
 const CLIENT_ID = process.env.CLIENT_ID?.trim() || "";
@@ -108,7 +115,7 @@ function getSession(req: express.Request): Session | undefined {
   const token = readCookie(req, COOKIE);
   if (token && sessions.has(token)) return sessions.get(token);
   if (!OAUTH_ENABLED && ENV_API_KEY) {
-    return { apiKey: ENV_API_KEY, user: { name: "Local (env key)" } };
+    return { apiKey: ENV_API_KEY, user: { name: API_HOST } };
   }
   return undefined;
 }
@@ -243,11 +250,15 @@ app.post("/api/files", upload.single("file"), async (req, res) => {
   fd.append("file", new Blob([bytes], { type: req.file.mimetype }), req.file.originalname);
   fd.append("purpose", "reference_media");
 
+  console.log(`→ upload  ${req.file.originalname}  (${Math.round(req.file.size / 1024)}kb)`);
   try {
     const upstream = await opperFetch(session, "/v3/files", { method: "POST", body: fd });
     if (!upstream.ok) return relayError(res, upstream);
-    res.json(await upstream.json());
+    const data = await upstream.json();
+    console.log(`✓ upload  ${data.id}`);
+    res.json(data);
   } catch (err: any) {
+    console.error(`✗ upload  ${err?.message}`);
     res.status(502).json({ code: "network", error: err?.message || "Upload failed." });
   }
 });
@@ -278,16 +289,28 @@ app.post("/api/generate", async (req, res) => {
   if (Array.isArray(b.reference_images) && b.reference_images.length) body.reference_images = b.reference_images;
   if (b.parameters && typeof b.parameters === "object") body.parameters = b.parameters;
 
+  const started = Date.now();
+  const extra = Array.isArray(body.reference_images)
+    ? ` +${body.reference_images.length} ref`
+    : body.image
+      ? " +edit"
+      : "";
+  console.log(`→ images  ${body.model}${extra}  "${String(body.prompt).slice(0, 50)}"`);
   try {
     const upstream = await opperFetch(session, "/v3/images", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (!upstream.ok) return relayError(res, upstream);
+    if (!upstream.ok) {
+      console.warn(`✗ images  ${body.model}  ${upstream.status}  (${Date.now() - started}ms)`);
+      return relayError(res, upstream);
+    }
     const data = await upstream.json();
+    console.log(`✓ images  ${body.model}  ${Date.now() - started}ms  $${data.usage?.cost ?? "?"}`);
     res.json(data);
   } catch (err: any) {
+    console.error(`✗ images  ${body.model}  ${err?.message}`);
     res.status(502).json({ code: "network", error: err?.message || "Failed to reach Opper." });
   }
 });
@@ -342,6 +365,8 @@ app.post("/api/intent", async (req, res) => {
     model: INTENT_MODEL,
   };
 
+  const started = Date.now();
+  console.log(`→ intent  "${text.slice(0, 50)}"`);
   try {
     const upstream = await opperFetch(session, "/v3/call", {
       method: "POST",
@@ -349,6 +374,7 @@ app.post("/api/intent", async (req, res) => {
       body: JSON.stringify(body),
     });
     if (!upstream.ok) return relayError(res, upstream);
+    console.log(`✓ intent  ${INTENT_MODEL}  ${Date.now() - started}ms`);
     const data = await upstream.json();
     // Structured result lands in `data`; fall back to parsing meta.message.
     let patch = data.data;
@@ -409,5 +435,6 @@ const PORT = await findPort(PREFERRED_PORT);
 app.listen(PORT, () => {
   console.log(`\n  Media Studio`);
   console.log(`  http://localhost:${PORT}`);
+  console.log(`  API:  ${OPPER_BASE_URL}`);
   console.log(`  Auth: ${OAUTH_ENABLED ? "Login with Opper (OAuth)" : "OPPER_API_KEY (env)"}\n`);
 });
