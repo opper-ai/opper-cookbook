@@ -182,6 +182,17 @@ function addCreations(entries: Creation[]): void {
   if (!entries.length) return;
   const all = loadCreations();
   all.push(...entries);
+  writeCreations(all);
+}
+
+function removeCreation(apiKey: string, fileId: string): void {
+  const acct = accountId(apiKey);
+  const all = loadCreations();
+  const next = all.filter((c) => !(c.account === acct && c.file_id === fileId));
+  if (next.length !== all.length) writeCreations(next);
+}
+
+function writeCreations(all: Creation[]): void {
   try {
     if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
     writeFileSync(CREATIONS_FILE, JSON.stringify(all));
@@ -491,6 +502,22 @@ app.get("/api/gallery", (req, res) => {
  * the presigned URL is a public AWS link anyone can open — it just expires in
  * ~1h. That's the right thing to "Share" from a locally-run studio.
  */
+app.delete("/api/files/:fileId", async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ code: "disconnected", error: "Not logged in." });
+  const fileId = req.params.fileId;
+  try {
+    const upstream = await opperFetch(session, `/v3/files/${encodeURIComponent(fileId)}`, { method: "DELETE" });
+    if (!upstream.ok) return relayError(res, upstream);
+    removeCreation(session.apiKey, fileId);
+    console.log(`✓ delete  ${fileId}`);
+    res.json(await upstream.json().catch(() => ({ deleted: true })));
+  } catch (err: any) {
+    console.error(`✗ delete  ${fileId}  ${err?.message}`);
+    res.status(502).json({ code: "network", error: err?.message || "Failed to reach Opper." });
+  }
+});
+
 app.get("/api/share/:fileId", async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ code: "disconnected", error: "Not logged in." });

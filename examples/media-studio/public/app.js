@@ -160,6 +160,7 @@ function galleryCard(item) {
         <button class="icon-btn" data-act="remix">⇄ Remix</button>
         <button class="icon-btn" data-act="share">Share</button>
         <button class="icon-btn" data-act="download">Download</button>
+        <button class="icon-btn" data-act="delete" title="Delete file">🗑</button>
       </div>
     </div>`;
   card.querySelector('[data-act="remix"]').addEventListener("click", () => {
@@ -168,7 +169,49 @@ function galleryCard(item) {
   });
   card.querySelector('[data-act="share"]').addEventListener("click", () => copyShareLink(fileId));
   card.querySelector('[data-act="download"]').addEventListener("click", () => downloadImage(src, { file_id: fileId, mime_type: item.mime_type }));
+  wireDelete(card.querySelector('[data-act="delete"]'), fileId, card);
   return card;
+}
+
+// Two-step delete: first click arms ("Sure?"), second within 3s deletes.
+function wireDelete(btn, fileId, card) {
+  let armed = false;
+  let armTimer = null;
+  btn.addEventListener("click", async () => {
+    if (!armed) {
+      armed = true;
+      btn.textContent = "Sure?";
+      btn.classList.add("armed");
+      armTimer = setTimeout(() => {
+        armed = false;
+        btn.textContent = "🗑";
+        btn.classList.remove("armed");
+      }, 3000);
+      return;
+    }
+    clearTimeout(armTimer);
+    btn.disabled = true;
+    btn.textContent = "…";
+    try {
+      const res = await fetch(`/api/files/${fileId}`, { method: "DELETE" });
+      if (!res.ok) {
+        handleApiError(res.status, await res.json().catch(() => ({})));
+        btn.disabled = false;
+        btn.textContent = "🗑";
+        btn.classList.remove("armed");
+        armed = false;
+        return;
+      }
+      card.remove();
+      toast("Deleted.");
+    } catch (err) {
+      toast("Delete failed: " + err.message, true);
+      btn.disabled = false;
+      btn.textContent = "🗑";
+      btn.classList.remove("armed");
+      armed = false;
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------
