@@ -52,6 +52,7 @@ async function boot() {
   $("#prompt").addEventListener("keydown", (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") generate();
   });
+  $("#advanced-toggle").addEventListener("click", toggleAdvanced);
 }
 
 // ---------------------------------------------------------------------------
@@ -96,15 +97,106 @@ function selectModel(id) {
   state.model = model;
   state.options = { ...model.happyPath };
   document.querySelectorAll(".model-card").forEach((c) => c.classList.toggle("active", c.dataset.id === id));
-  renderAdvanced(); // no-op until increment 3
+  $("#advanced-toggle").hidden = false;
+  renderAdvanced();
   updateGenerateEnabled();
 }
 
 // ---------------------------------------------------------------------------
-// Advanced options — filled in increment 3
+// Advanced options — rendered from the selected model's capabilities
 // ---------------------------------------------------------------------------
 
-function renderAdvanced() {}
+function toggleAdvanced() {
+  const panel = $("#advanced-panel");
+  const open = panel.hidden;
+  panel.hidden = !open;
+  $("#advanced-toggle").textContent = (open ? "▾" : "▸") + " Advanced options";
+}
+
+function renderAdvanced() {
+  const m = state.model;
+  const panel = $("#advanced-panel");
+  const fields = [];
+
+  // Dimension — size (pixels) or aspect ratio, as chips.
+  const dim = m.dimension;
+  const dimKey = dim.kind === "size" ? "size" : "aspect_ratio";
+  fields.push(
+    fieldChips(dim.kind === "size" ? "Size" : "Aspect ratio", dim.options, state.options[dimKey], (v) => {
+      state.options[dimKey] = v;
+    }),
+  );
+
+  // Quality tier.
+  if (m.qualities?.length) {
+    fields.push(
+      fieldChips("Quality", m.qualities, state.options.quality ?? m.qualityDefault, (v) => {
+        state.options.quality = v;
+      }),
+    );
+  }
+
+  // Number of images.
+  if ((m.supports.n ?? 1) > 1) {
+    fields.push(
+      fieldNumber("Images", 1, m.supports.n, state.options.n ?? 1, (v) => {
+        state.options.n = v;
+      }),
+    );
+  }
+
+  // Seed (provider passthrough).
+  if (m.supports.seed) {
+    fields.push(
+      fieldNumber("Seed (optional)", 0, 2_147_483_647, state.options.parameters?.seed ?? "", (v) => {
+        state.options.parameters = { ...(state.options.parameters || {}) };
+        if (v === "" || v === null) delete state.options.parameters.seed;
+        else state.options.parameters.seed = v;
+      }),
+    );
+  }
+
+  panel.replaceChildren(...fields);
+}
+
+function fieldChips(label, options, current, onChange) {
+  const wrap = document.createElement("div");
+  wrap.className = "field";
+  const lab = document.createElement("label");
+  lab.textContent = label;
+  const row = document.createElement("div");
+  row.className = "chip-row";
+  options.forEach((opt) => {
+    const chip = document.createElement("button");
+    chip.className = "chip" + (opt === current ? " active" : "");
+    chip.textContent = opt;
+    chip.addEventListener("click", () => {
+      onChange(opt);
+      row.querySelectorAll(".chip").forEach((c) => c.classList.toggle("active", c === chip));
+    });
+    row.appendChild(chip);
+  });
+  wrap.append(lab, row);
+  return wrap;
+}
+
+function fieldNumber(label, min, max, value, onChange) {
+  const wrap = document.createElement("div");
+  wrap.className = "field";
+  const lab = document.createElement("label");
+  lab.textContent = label;
+  const input = document.createElement("input");
+  input.type = "number";
+  input.min = String(min);
+  input.max = String(max);
+  input.value = value === "" ? "" : String(value);
+  input.addEventListener("input", () => {
+    const v = input.value === "" ? "" : Math.max(min, Math.min(max, parseInt(input.value) || min));
+    onChange(v);
+  });
+  wrap.append(lab, input);
+  return wrap;
+}
 
 // ---------------------------------------------------------------------------
 // Generate
