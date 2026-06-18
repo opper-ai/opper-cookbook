@@ -160,7 +160,14 @@ function getSession(req: express.Request): Session | undefined {
 // generated, per Opper account. Survives restarts; also lets the gallery show
 // the model + prompt, which the raw files list doesn't carry.
 
-type Creation = { account: string; file_id: string; model: string; prompt: string; created: number };
+type Creation = {
+  account: string;
+  file_id: string;
+  model: string;
+  prompt: string;
+  created: number;
+  kind: "image" | "video";
+};
 
 const DATA_DIR = join(__dirname, "data");
 const CREATIONS_FILE = join(DATA_DIR, "creations.json");
@@ -418,6 +425,7 @@ app.post("/api/generate", async (req, res) => {
           model: String(body.model),
           prompt: String(body.prompt),
           created: Date.now(),
+          kind: "image" as const,
         })),
     );
     res.json(data);
@@ -442,11 +450,11 @@ app.post("/api/intent", async (req, res) => {
   if (!text) return res.status(400).json({ code: "bad_request", error: "Empty request." });
 
   // Compact catalog summary so the model only proposes valid ids/values.
-  const models = CATALOG.map((m) => ({
+  const models = CATALOG.filter((m) => m.modality === "image").map((m) => ({
     id: m.id,
     label: m.label,
-    dimension_kind: m.dimension.kind,
-    dimension_options: m.dimension.options,
+    dimension_kind: m.dimension?.kind ?? null,
+    dimension_options: m.dimension?.options ?? [],
     qualities: m.qualities ?? [],
     max_images: m.supports.n ?? 1,
   }));
@@ -501,6 +509,73 @@ app.post("/api/intent", async (req, res) => {
   }
 });
 
+// Video is async: submit returns a job id, then the client polls. We remember
+// each job's model/prompt so we can record the creation when it completes.
+const videoJobs = new Map<string, { account: string; model: string; prompt: string }>();
+
+/** Submit a video generation job — proxy to POST /v3/videos. */
+app.post("/api/video", async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ code: "disconnected", error: "Not logged in." });
+  const b = req.body ?? {};
+  if (!b.model || !b.prompt) {
+    return res.status(400).json({ code: "bad_request", error: "model and prompt are required." });
+  }
+  const body: Record<string, unknown> = { model: b.model, prompt: b.prompt, store: true };
+  if (b.image) body.image = b.image;
+  if (Array.isArray(b.reference_images) && b.reference_images.length) body.reference_images = b.reference_images;
+  if (b.parameters && typeof b.parameters === "object") body.parameters = b.parameters;
+
+  console.log(`→ video   ${b.model}  "${String(b.prompt).slice(0, 50)}"`);
+  try {
+    const upstream = await opperFetch(session, "/v3/videos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!upstream.ok) {
+      console.warn(`✗ video   ${b.model}  submit ${upstream.status}`);
+      return relayError(res, upstream);
+    }
+    const data = await upstream.json(); // { id, status_url }
+    if (data.id) {
+      videoJobs.set(data.id, { account: accountId(session.apiKey), model: String(b.model), prompt: String(b.prompt) });
+    }
+    res.json({ id: data.id });
+  } catch (err: any) {
+    console.error(`✗ video   ${b.model}  ${err?.message}`);
+    res.status(502).json({ code: "network", error: err?.message || "Failed to reach Opper." });
+  }
+});
+
+/** Poll a video job — proxy GET /v3/artifacts/{id}/status; record on completion. */
+app.get("/api/video/:id", async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ code: "disconnected", error: "Not logged in." });
+  const id = req.params.id;
+  try {
+    const upstream = await opperFetch(session, `/v3/artifacts/${encodeURIComponent(id)}/status`);
+    if (!upstream.ok) return relayError(res, upstream);
+    const data = await upstream.json();
+    if (data.status === "completed") {
+      const job = videoJobs.get(id);
+      if (data.file_id && job) {
+        addCreations([
+          { account: job.account, file_id: data.file_id, model: job.model, prompt: job.prompt, created: Date.now(), kind: "video" },
+        ]);
+      }
+      videoJobs.delete(id);
+      console.log(`✓ video   ${job?.model ?? id}  done`);
+    } else if (data.status === "failed") {
+      videoJobs.delete(id);
+      console.warn(`✗ video   ${id}  ${data.error ?? "failed"}`);
+    }
+    res.json(data);
+  } catch (err: any) {
+    res.status(502).json({ code: "network", error: err?.message || "Failed to reach Opper." });
+  }
+});
+
 /** Your saved creations — images generated in this app (scoped to your account). */
 app.get("/api/gallery", (req, res) => {
   const session = getSession(req);
@@ -510,7 +585,7 @@ app.get("/api/gallery", (req, res) => {
     .filter((c) => c.account === acct)
     .sort((a, b) => b.created - a.created)
     .slice(0, 60)
-    .map((c) => ({ file_id: c.file_id, model: c.model, prompt: c.prompt, created: c.created }));
+    .map((c) => ({ file_id: c.file_id, model: c.model, prompt: c.prompt, created: c.created, kind: c.kind ?? "image" }));
   res.json({ items });
 });
 

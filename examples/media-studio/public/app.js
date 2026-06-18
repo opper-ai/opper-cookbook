@@ -7,16 +7,17 @@ const $ = (sel) => document.querySelector(sel);
 const state = {
   me: null,
   catalog: [],
+  modality: "image", // which media type the picker is showing
   model: null, // selected ModelEntry
-  options: {}, // current generation options (dimension/quality/n)
+  options: {}, // image: top-level options; video: the `parameters` object
   references: [], // [{ file_id, preview }]
   sessionCost: 0,
 };
 
-// Modalities — only image is live today; the rest signal where this grows.
+// Modalities. Audio is the next one to light up.
 const MODALITIES = [
   { id: "image", label: "Image", icon: "▣", live: true },
-  { id: "video", label: "Video", icon: "▶", live: false },
+  { id: "video", label: "Video", icon: "▶", live: true },
   { id: "audio", label: "Audio", icon: "♪", live: false },
 ];
 
@@ -46,7 +47,7 @@ async function boot() {
   state.catalog = models;
   renderModalities();
   renderModels();
-  selectModel((models.find((m) => m.default) ?? models[0]).id);
+  selectModel(defaultModelFor(state.modality).id);
 
   $("#generate-btn").addEventListener("click", generate);
   $("#prompt").addEventListener("input", updateGenerateEnabled);
@@ -170,26 +171,34 @@ async function loadGallery() {
 function galleryCard(item) {
   const fileId = item.file_id;
   const src = `/s/${fileId}`;
+  const isVideo = item.kind === "video";
   const card = document.createElement("div");
   card.className = "result-card";
+  const media = isVideo
+    ? `<video src="${src}" controls playsinline preload="metadata"></video>`
+    : `<img loading="lazy" src="${src}" alt="${esc(item.prompt || "saved creation")}"/>`;
   card.innerHTML = `
-    <div class="img-wrap"><img loading="lazy" src="${src}" alt="${esc(item.prompt || "saved creation")}"/></div>
+    <div class="img-wrap">${media}</div>
     <div class="result-meta">
       <span class="rm-cost" title="${esc(item.prompt || "")}">${esc(item.model || "")}</span>
       <div class="result-actions">
-        <button class="icon-btn" data-act="remix">⇄ Remix</button>
+        ${isVideo ? "" : '<button class="icon-btn" data-act="remix">⇄ Remix</button>'}
         <button class="icon-btn" data-act="share">Share</button>
         <button class="icon-btn" data-act="download">Download</button>
         <button class="icon-btn" data-act="delete" title="Delete file">🗑</button>
       </div>
     </div>`;
-  card.querySelector("img").addEventListener("click", () => openLightbox(src));
-  card.querySelector('[data-act="remix"]').addEventListener("click", () => {
-    remixFromResult({ file_id: fileId }, src);
-    switchView("studio");
-  });
+  if (!isVideo) {
+    card.querySelector("img").addEventListener("click", () => openLightbox(src));
+    card.querySelector('[data-act="remix"]').addEventListener("click", () => {
+      remixFromResult({ file_id: fileId }, src);
+      switchView("studio");
+    });
+  }
   card.querySelector('[data-act="share"]').addEventListener("click", () => copyShareLink(fileId));
-  card.querySelector('[data-act="download"]').addEventListener("click", () => downloadImage(src, { file_id: fileId, mime_type: item.mime_type }));
+  card.querySelector('[data-act="download"]').addEventListener("click", () =>
+    downloadImage(src, { file_id: fileId, mime_type: isVideo ? "video/mp4" : item.mime_type }),
+  );
   wireDelete(card.querySelector('[data-act="delete"]'), fileId, card);
   return card;
 }
@@ -239,35 +248,58 @@ function wireDelete(btn, fileId, card) {
 // Rail: modalities + models
 // ---------------------------------------------------------------------------
 
+function defaultModelFor(modality) {
+  const inMod = state.catalog.filter((m) => m.modality === modality);
+  return inMod.find((m) => m.default) ?? inMod[0];
+}
+
 function renderModalities() {
   const host = $("#modality-list");
   host.replaceChildren(
     ...MODALITIES.map((m) => {
       const el = document.createElement("div");
-      el.className = "modality" + (m.live ? "" : " disabled") + (m.id === "image" ? " active" : "");
+      el.className = "modality" + (m.live ? "" : " disabled") + (m.id === state.modality ? " active" : "");
       el.innerHTML = `<span>${m.icon}</span><span>${m.label}</span>` + (m.live ? "" : `<span class="soon">soon</span>`);
+      if (m.live) el.addEventListener("click", () => switchModality(m.id));
       return el;
     }),
   );
 }
 
+function switchModality(modality) {
+  if (modality === state.modality) return;
+  state.modality = modality;
+  state.references = [];
+  renderModalities();
+  renderModels();
+  selectModel(defaultModelFor(modality).id);
+}
+
+function costLabel(m) {
+  const n = m.approxCost.toFixed(m.approxCost < 0.01 ? 3 : 2);
+  const unit = m.costUnit === "second" ? "/s" : m.costUnit === "clip" ? "/clip" : "";
+  return `~$${n}${unit}`;
+}
+
 function renderModels() {
   const host = $("#model-list");
   host.replaceChildren(
-    ...state.catalog.map((m) => {
-      const card = document.createElement("button");
-      card.className = "model-card";
-      card.dataset.id = m.id;
-      card.innerHTML = `
+    ...state.catalog
+      .filter((m) => m.modality === state.modality)
+      .map((m) => {
+        const card = document.createElement("button");
+        card.className = "model-card";
+        card.dataset.id = m.id;
+        card.innerHTML = `
         <div class="mc-top">
           <span class="mc-label">${esc(m.label)}</span>
-          <span class="mc-cost">~$${m.approxCost.toFixed(m.approxCost < 0.01 ? 3 : 2)}</span>
+          <span class="mc-cost">${costLabel(m)}</span>
         </div>
         <div class="mc-provider">${esc(m.provider)}</div>
         <div class="mc-blurb">${esc(m.blurb)}</div>`;
-      card.addEventListener("click", () => selectModel(m.id));
-      return card;
-    }),
+        card.addEventListener("click", () => selectModel(m.id));
+        return card;
+      }),
   );
 }
 
@@ -287,22 +319,37 @@ function selectModel(id) {
 // Reference media — upload to /v3/files, reuse as reference / edit source
 // ---------------------------------------------------------------------------
 
+// What input images (if any) the selected model takes, and how they're sent.
+function inputSpec(m) {
+  if (!m) return { max: 0 };
+  if (m.modality === "image") {
+    if (m.supports.referenceImages) return { max: 8, field: "reference_images", noun: "reference" };
+    if (m.supports.imageEdit) return { max: 1, field: "image", noun: "image to edit" };
+    return { max: 0 };
+  }
+  // video
+  const v = m.video || {};
+  if (v.referenceImages) return { max: 3, field: "reference_images", noun: "reference" };
+  if (v.inputKind === "i2v" || v.inputKind === "both") {
+    return { max: 1, field: "image", noun: "source image", required: !!v.requiresImage };
+  }
+  return { max: 0 };
+}
+
 function maxRefs(m) {
-  if (m.supports.referenceImages) return 8;
-  if (m.supports.imageEdit) return 1;
-  return 0;
+  return inputSpec(m).max;
 }
 
 function renderReferenceZone() {
   const zone = $("#reference-zone");
-  const max = maxRefs(state.model);
-  if (max === 0) {
+  const spec = inputSpec(state.model);
+  if (spec.max === 0) {
     zone.hidden = true;
     state.references = [];
     return;
   }
   zone.hidden = false;
-  if (state.references.length > max) state.references = state.references.slice(0, max);
+  if (state.references.length > spec.max) state.references = state.references.slice(0, spec.max);
 
   const thumbs = state.references.map((ref, i) => {
     const t = document.createElement("div");
@@ -311,16 +358,17 @@ function renderReferenceZone() {
     t.querySelector(".ref-x").addEventListener("click", () => {
       state.references.splice(i, 1);
       renderReferenceZone();
+      updateGenerateEnabled();
     });
     return t;
   });
 
   const addBtn = document.createElement("label");
   addBtn.className = "ref-add";
-  const noun = state.model.supports.referenceImages ? "reference" : "image to edit";
-  addBtn.innerHTML = `+ Add ${noun}<input type="file" accept="image/*" hidden ${max > 1 ? "multiple" : ""}/>`;
+  const need = spec.required ? " (required)" : "";
+  addBtn.innerHTML = `+ Add ${spec.noun}${need}<input type="file" accept="image/*" hidden ${spec.max > 1 ? "multiple" : ""}/>`;
   addBtn.querySelector("input").addEventListener("change", (e) => onPickFiles(e.target.files));
-  if (state.references.length >= max) addBtn.style.display = "none";
+  if (state.references.length >= spec.max) addBtn.style.display = "none";
 
   zone.replaceChildren(...thumbs, addBtn);
 }
@@ -341,6 +389,7 @@ async function onPickFiles(fileList) {
       }
       state.references.push({ file_id: data.id, preview });
       renderReferenceZone();
+      updateGenerateEnabled();
     } catch (err) {
       toast("Upload failed: " + err.message, true);
     }
@@ -375,6 +424,8 @@ function toggleAdvanced() {
 
 function renderAdvanced() {
   const m = state.model;
+  if (m.modality === "video") return renderVideoAdvanced(m);
+
   const panel = $("#advanced-panel");
   const fields = [];
 
@@ -419,7 +470,43 @@ function renderAdvanced() {
   panel.replaceChildren(...fields);
 }
 
-function fieldChips(label, options, current, onChange) {
+// Video advanced options — provider-specific keys live in the model's video
+// config; each control writes into state.options (the `parameters` object).
+function renderVideoAdvanced(m) {
+  const panel = $("#advanced-panel");
+  const v = m.video || {};
+  const fields = [];
+  if (v.resolutions) {
+    fields.push(
+      fieldChips("Resolution", v.resolutions.options, state.options[v.resolutions.key], (val) => {
+        state.options[v.resolutions.key] = val;
+      }),
+    );
+  }
+  if (v.aspectRatios) {
+    fields.push(
+      fieldChips("Aspect ratio", v.aspectRatios.options, state.options[v.aspectRatios.key], (val) => {
+        state.options[v.aspectRatios.key] = val;
+      }),
+    );
+  }
+  if (v.durations) {
+    fields.push(
+      fieldChips(
+        "Duration (s)",
+        v.durations.options,
+        state.options[v.durations.key],
+        (val) => {
+          state.options[v.durations.key] = val;
+        },
+        (n) => `${n}s`,
+      ),
+    );
+  }
+  panel.replaceChildren(...fields);
+}
+
+function fieldChips(label, options, current, onChange, fmt) {
   const wrap = document.createElement("div");
   wrap.className = "field";
   const lab = document.createElement("label");
@@ -429,7 +516,7 @@ function fieldChips(label, options, current, onChange) {
   options.forEach((opt) => {
     const chip = document.createElement("button");
     chip.className = "chip" + (opt === current ? " active" : "");
-    chip.textContent = opt;
+    chip.textContent = fmt ? fmt(opt) : opt;
     chip.addEventListener("click", () => {
       onChange(opt);
       row.querySelectorAll(".chip").forEach((c) => c.classList.toggle("active", c === chip));
@@ -463,24 +550,34 @@ function fieldNumber(label, min, max, value, onChange) {
 // ---------------------------------------------------------------------------
 
 function updateGenerateEnabled() {
-  const ready = Boolean(state.model && $("#prompt").value.trim());
+  const spec = inputSpec(state.model);
+  const needsImage = spec.required && state.references.length === 0;
+  const ready = Boolean(state.model && $("#prompt").value.trim()) && !needsImage;
   $("#generate-btn").disabled = !ready;
+}
+
+// Attach any uploaded input images to a payload per the model's input spec.
+function attachInputs(payload) {
+  if (!state.references.length) return;
+  const ids = state.references.map((r) => r.file_id);
+  const spec = inputSpec(state.model);
+  if (spec.field === "reference_images") payload.reference_images = ids;
+  else if (spec.field === "image") payload.image = ids[0];
 }
 
 async function generate() {
   const prompt = $("#prompt").value.trim();
   if (!state.model || !prompt) return;
+  if (state.model.modality === "video") return generateVideo(prompt);
 
   $("#empty-state").hidden = true;
   const card = addLoadingCard();
   setGenerating(true);
 
   const payload = { model: state.model.id, prompt, ...state.options };
-  if (state.references.length) {
-    const ids = state.references.map((r) => r.file_id);
-    if (state.model.supports.referenceImages) payload.reference_images = ids;
-    else if (state.model.supports.imageEdit) payload.image = ids[0];
-  }
+  attachInputs(payload);
+  // Route generation-vs-edit models (e.g. Pruna) to their edit variant when a source image is present.
+  if (payload.image && state.model.editModel) payload.model = state.model.editModel;
 
   try {
     const res = await fetch("/api/generate", {
@@ -509,6 +606,84 @@ function setGenerating(on) {
   btn.disabled = on;
   btn.textContent = on ? "Generating…" : "Generate";
   if (!on) updateGenerateEnabled();
+}
+
+// ---------------------------------------------------------------------------
+// Video — async: submit a job, then poll until the clip is ready
+// ---------------------------------------------------------------------------
+
+async function generateVideo(prompt) {
+  const model = state.model;
+  $("#empty-state").hidden = true;
+  const card = addLoadingCard();
+  setGenerating(true);
+
+  const payload = { model: model.id, prompt, parameters: { ...state.options } };
+  attachInputs(payload); // image / reference_images at top level
+
+  try {
+    const res = await fetch("/api/video", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      clearCard(card);
+      handleApiError(res.status, data);
+      return;
+    }
+    toast("Video queued — this can take a few minutes.");
+    pollVideo(data.id, card, prompt, model);
+  } catch (err) {
+    clearCard(card);
+    toast("Network error: " + err.message, true);
+  } finally {
+    // Job is queued; free the button so more can be started while it renders.
+    setGenerating(false);
+  }
+}
+
+async function pollVideo(id, card, prompt, model) {
+  try {
+    const res = await fetch(`/api/video/${id}`);
+    const data = await res.json();
+    if (!res.ok) {
+      clearCard(card);
+      handleApiError(res.status, data);
+      return;
+    }
+    if (data.status === "completed") return fillVideoCard(card, data, prompt, model);
+    if (data.status === "failed") {
+      clearCard(card);
+      toast("Video failed: " + (data.error || "unknown error"), true);
+      return;
+    }
+    setTimeout(() => pollVideo(id, card, prompt, model), 4000);
+  } catch {
+    setTimeout(() => pollVideo(id, card, prompt, model), 5000); // transient — keep trying
+  }
+}
+
+function fillVideoCard(card, data, prompt, model) {
+  clearInterval(card._timer);
+  const src = data.url || (data.file_id ? `/s/${data.file_id}` : "");
+  card.classList.remove("loading");
+  card.innerHTML = `
+    <div class="img-wrap"><video src="${src}" controls playsinline></video></div>
+    <div class="result-meta">
+      <span class="rm-cost" title="${esc(prompt)}">${esc(model.label)}</span>
+      <div class="result-actions">
+        <button class="icon-btn" data-act="share">Share</button>
+        <button class="icon-btn" data-act="download">Download</button>
+      </div>
+    </div>`;
+  card.querySelector('[data-act="download"]').addEventListener("click", () =>
+    downloadImage(src, { file_id: data.file_id, mime_type: data.mime_type || "video/mp4" }),
+  );
+  const shareBtn = card.querySelector('[data-act="share"]');
+  if (data.file_id) shareBtn.addEventListener("click", () => copyShareLink(data.file_id));
+  else shareBtn.remove();
 }
 
 // ---------------------------------------------------------------------------
@@ -594,9 +769,16 @@ function imageSrc(item) {
 }
 
 function downloadImage(src, item) {
+  const ext = item.mime_type?.includes("mp4")
+    ? ".mp4"
+    : item.mime_type === "image/jpeg"
+      ? ".jpg"
+      : item.mime_type?.startsWith("video/")
+        ? ".mp4"
+        : ".png";
   const a = document.createElement("a");
   a.href = src;
-  a.download = (item.file_id || "image") + (item.mime_type === "image/jpeg" ? ".jpg" : ".png");
+  a.download = (item.file_id || "media") + ext;
   a.target = "_blank";
   a.click();
 }
