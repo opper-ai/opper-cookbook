@@ -1,0 +1,23 @@
+{
+  "name": "media-studio",
+  "version": "0.1.0",
+  "description": "Click-first media generation studio — log in with Opper, pick a model, generate images. Built on /v3/images and /v3/files.",
+  "type": "module",
+  "scripts": {
+    "start": "tsx server.ts",
+    "dev": "tsx watch server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@opperai/login": "^0.4.0",
+    "express": "^5.1.0",
+    "multer": "^2.0.0",
+    "opperai": "^4.0.0-beta.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/multer": "^2.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.5.0"
+  }
+}

@@ -6,6 +6,7 @@ Examples and guides for building with [Opper](https://opper.ai). PRs are welcome
 
 | Example | Language | Description |
 |---------|----------|-------------|
+| [media-studio](examples/media-studio/) | TypeScript | Click-first media generation studio — image gen across many providers via `/v3/images`, reference uploads + stored/shareable results via `/v3/files`, a structured-output "intent bar", optional Login with Opper, web UI |
 | [research-assistant](examples/research-assistant/) | Python | Web search, knowledge base, structured output, streaming, image generation, tracing |
 | [content-analyzer](examples/content-analyzer/) | TypeScript | Parallel analysis, embeddings, knowledge base, streaming, text-to-speech, tracing |
 | [chatbot-openresponses](examples/chatbot-openresponses/) | TypeScript | OpenResponses endpoint via raw fetch(), agentic tool loop, image generation, TTS, web UI |
