@@ -282,6 +282,77 @@ app.post("/api/generate", async (req, res) => {
   }
 });
 
+/**
+ * Intent bar — turn a freeform request into a settings patch via a structured
+ * /v3/call. This is the one place the studio uses an LLM, and it doubles as a
+ * structured-output demo: the model picks a catalog model id and fills in
+ * dimension / quality / count from natural language.
+ */
+const INTENT_MODEL = process.env.INTENT_MODEL || "anthropic/claude-sonnet-4.6";
+
+app.post("/api/intent", async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ code: "disconnected", error: "Not logged in." });
+  const text = String(req.body?.text ?? "").trim();
+  if (!text) return res.status(400).json({ code: "bad_request", error: "Empty request." });
+
+  // Compact catalog summary so the model only proposes valid ids/values.
+  const models = CATALOG.map((m) => ({
+    id: m.id,
+    label: m.label,
+    dimension_kind: m.dimension.kind,
+    dimension_options: m.dimension.options,
+    qualities: m.qualities ?? [],
+    max_images: m.supports.n ?? 1,
+  }));
+
+  const output_schema = {
+    type: "object",
+    properties: {
+      prompt: { type: ["string", "null"], description: "A cleaned, vivid image prompt." },
+      model: { type: ["string", "null"], description: "One model id from the list, or null to keep current." },
+      aspect_ratio: { type: ["string", "null"], description: "e.g. 16:9 — only if the chosen model is aspect-based." },
+      size: { type: ["string", "null"], description: "e.g. 1024x1024 — only if the chosen model is size-based." },
+      quality: { type: ["string", "null"] },
+      n: { type: ["integer", "null"], description: "Number of images, if asked for." },
+    },
+    required: ["prompt", "model", "aspect_ratio", "size", "quality", "n"],
+    additionalProperties: false,
+  };
+
+  const body = {
+    name: "media-studio-intent",
+    instructions:
+      "You set up an image generation. Turn the user's request into a clean image prompt and " +
+      "choose the best model id from available_models. Set aspect_ratio OR size only with a value " +
+      "valid for the chosen model's dimension_options; set quality only from that model's qualities. " +
+      "Leave a field null when the user didn't imply it. Keep current_model unless another clearly fits.",
+    input: { request: text, current_model: req.body?.model ?? null, available_models: models },
+    output_schema,
+    model: INTENT_MODEL,
+  };
+
+  try {
+    const upstream = await opperFetch(session, "/v3/call", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!upstream.ok) return relayError(res, upstream);
+    const data = await upstream.json();
+    // Structured result lands in `data`; fall back to parsing meta.message.
+    let patch = data.data;
+    if (!patch && typeof data.meta?.message === "string") {
+      try {
+        patch = JSON.parse(data.meta.message);
+      } catch {}
+    }
+    res.json(patch ?? {});
+  } catch (err: any) {
+    res.status(502).json({ code: "network", error: err?.message || "Failed to reach Opper." });
+  }
+});
+
 /** Your saved creations — list generated images from /v3/files. */
 app.get("/api/gallery", async (req, res) => {
   const session = getSession(req);

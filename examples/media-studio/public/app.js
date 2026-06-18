@@ -55,6 +55,66 @@ async function boot() {
   });
   $("#advanced-toggle").addEventListener("click", toggleAdvanced);
   document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => switchView(t.dataset.view)));
+
+  $("#intent-bar").hidden = false;
+  $("#intent-go").addEventListener("click", runIntent);
+  $("#intent-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") runIntent();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Intent bar — free text → a control patch (structured output via /v3/call)
+// ---------------------------------------------------------------------------
+
+async function runIntent() {
+  const text = $("#intent-input").value.trim();
+  if (!text) return;
+  const btn = $("#intent-go");
+  btn.disabled = true;
+  btn.textContent = "Thinking…";
+  try {
+    const res = await fetch("/api/intent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, model: state.model?.id }),
+    });
+    const patch = await res.json();
+    if (!res.ok) return handleApiError(res.status, patch);
+    applyIntentPatch(patch);
+  } catch (err) {
+    toast("Couldn't set that up: " + err.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Set up";
+  }
+}
+
+function applyIntentPatch(p) {
+  // Switch model first — selectModel resets options to the model's happy path,
+  // so any dimension/quality from the patch must be applied afterwards.
+  if (p.model) {
+    const m = state.catalog.find(
+      (x) => x.id === p.model || x.label.toLowerCase() === String(p.model).toLowerCase(),
+    );
+    if (m) selectModel(m.id);
+  }
+  if (p.prompt) $("#prompt").value = p.prompt;
+
+  const m = state.model;
+  if (p.aspect_ratio && m.dimension.kind === "aspect" && m.dimension.options.includes(p.aspect_ratio)) {
+    state.options.aspect_ratio = p.aspect_ratio;
+  }
+  if (p.size && m.dimension.kind === "size" && m.dimension.options.includes(p.size)) {
+    state.options.size = p.size;
+  }
+  if (p.quality && m.qualities?.includes(p.quality)) state.options.quality = p.quality;
+  if (p.n && (m.supports.n ?? 1) > 1) state.options.n = Math.min(p.n, m.supports.n);
+
+  renderAdvanced();
+  if ($("#advanced-panel").hidden) toggleAdvanced(); // reveal what changed
+  updateGenerateEnabled();
+  toast("Set up — review and Generate.");
 }
 
 // ---------------------------------------------------------------------------
