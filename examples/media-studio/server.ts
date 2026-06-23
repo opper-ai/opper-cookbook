@@ -345,8 +345,21 @@ async function presignedUrl(session: Session, fileId: string): Promise<string | 
 app.get("/api/catalog", (_req, res) => res.json({ models: CATALOG }));
 
 /** Upload a reference image — proxy to POST /v3/files, returns a reusable file_id. */
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
-app.post("/api/files", upload.single("file"), async (req, res) => {
+// Match the backend /v3/files cap (50 MB) so the limit doesn't bite earlier here.
+const MAX_UPLOAD_MB = 50;
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_MB * 1024 * 1024 } });
+// Wrap multer so its errors (e.g. file too large) come back as clean JSON instead
+// of an unhandled stack trace + a non-JSON body the browser can't parse.
+const uploadFile = (req: any, res: any, next: any) =>
+  upload.single("file")(req, res, (err: any) => {
+    if (!err) return next();
+    const tooLarge = err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE";
+    res.status(tooLarge ? 413 : 400).json({
+      code: "bad_request",
+      error: tooLarge ? `Image is too large (max ${MAX_UPLOAD_MB} MB).` : err.message || "Upload failed.",
+    });
+  });
+app.post("/api/files", uploadFile, async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ code: "disconnected", error: "Not logged in." });
   if (!req.file) return res.status(400).json({ code: "bad_request", error: "No file uploaded." });
