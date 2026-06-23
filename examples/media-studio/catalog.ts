@@ -27,14 +27,22 @@ export type VideoConfig = {
   durations?: VideoControl<number>;
 };
 
+/** Text-to-speech config. The prompt is the text to speak; these drive the controls. */
+export type AudioConfig = {
+  voices?: string[]; // selectable named voices; omit when the provider uses account-scoped voice ids (sends the model default)
+  defaultVoice?: string; // preselected voice (must be in voices)
+  formats?: string[]; // selectable output formats; omit to use the model default
+  speed?: boolean; // expose a playback-speed control
+};
+
 export type ModelEntry = {
   id: string;
   label: string;
   provider: string;
-  modality: "image" | "video";
+  modality: "image" | "video" | "audio";
   blurb: string;
-  approxCost: number; // USD per image, or per-second/flat for video — for the picker
-  costUnit?: "image" | "second" | "clip"; // how approxCost reads (default: image)
+  approxCost: number; // USD per image, per-second/flat for video, per-1K-chars for audio — for the picker
+  costUnit?: "image" | "second" | "clip" | "1k"; // how approxCost reads (default: image)
   default?: boolean; // default *within its modality*
   // image
   dimension?: Dimension;
@@ -42,6 +50,8 @@ export type ModelEntry = {
   qualityDefault?: string;
   // video
   video?: VideoConfig;
+  // audio (TTS)
+  audio?: AudioConfig;
   // when a source/edit image is attached, route to this model id instead
   editModel?: string;
   supports: {
@@ -156,8 +166,107 @@ export const CATALOG: ModelEntry[] = [
     happyPath: { size: "1024x1024", n: 1 },
   },
 
+  {
+    id: "fal/flux-1-schnell",
+    label: "FLUX.1 [schnell]",
+    provider: "fal.ai",
+    modality: "image",
+    blurb: "Fastest, cheapest FLUX — sub-cent images in a blink.",
+    approxCost: 0.003,
+    dimension: {
+      kind: "size",
+      options: ["1024x1024", "1280x720", "720x1280", "1024x768", "768x1024", "1536x1024", "1024x1536"],
+      default: "1024x1024",
+    },
+    supports: { n: 1, seed: true },
+    happyPath: { size: "1024x1024", n: 1 },
+  },
+  {
+    id: "fal/recraft-v3",
+    label: "Recraft V3",
+    provider: "fal.ai",
+    modality: "image",
+    blurb: "Top-ranked text rendering, plus brand and vector styles.",
+    approxCost: 0.04,
+    dimension: {
+      kind: "size",
+      options: ["1024x1024", "1280x720", "720x1280", "1024x768", "768x1024", "1536x1024", "1024x1536"],
+      default: "1024x1024",
+    },
+    supports: { n: 1 },
+    happyPath: { size: "1024x1024", n: 1 },
+  },
+  {
+    id: "fal/ideogram-v3",
+    label: "Ideogram V3",
+    provider: "fal.ai",
+    modality: "image",
+    blurb: "Crisp text and design; the quality tier sets speed and price.",
+    approxCost: 0.06,
+    dimension: {
+      kind: "size",
+      options: ["1024x1024", "1280x720", "720x1280", "1024x768", "768x1024", "1536x1024", "1024x1536"],
+      default: "1024x1024",
+    },
+    qualities: ["low", "medium", "high"],
+    qualityDefault: "medium",
+    supports: { n: 1, seed: true },
+    happyPath: { size: "1024x1024", quality: "medium", n: 1 },
+  },
+  {
+    id: "fal/flux-kontext-pro",
+    label: "FLUX.1 Kontext [pro]",
+    provider: "fal.ai",
+    modality: "image",
+    blurb: "Instruction-based editing — add a source image and describe the change.",
+    approxCost: 0.04,
+    dimension: {
+      kind: "size",
+      options: ["1024x1024", "1280x720", "720x1280", "1024x768", "768x1024", "1536x1024", "1024x1536"],
+      default: "1024x1024",
+    },
+    supports: { imageEdit: true, n: 1, seed: true },
+    happyPath: { size: "1024x1024", n: 1 },
+  },
+  {
+    id: "reve/reve-image",
+    label: "Reve Image",
+    provider: "Reve.ai",
+    modality: "image",
+    blurb: "Strong prompt adherence and accurate typography. Create, edit, or remix from references.",
+    approxCost: 0.024,
+    dimension: {
+      kind: "aspect",
+      options: ["1:1", "16:9", "9:16", "3:2", "2:3", "4:3", "3:4"],
+      default: "1:1",
+    },
+    supports: { imageEdit: true, referenceImages: true, n: 1 },
+    happyPath: { aspect_ratio: "1:1", n: 1 },
+  },
+
   // ---- Video (async: POST /v3/videos → poll /v3/artifacts/{id}/status) ----
   // For video, happyPath is the `parameters` object; keys are provider-specific.
+  {
+    id: "deepinfra/ByteDance/Seedance-2.0",
+    label: "Seedance 2.0",
+    provider: "ByteDance",
+    modality: "video",
+    blurb:
+      "Cinematic clips up to 15s with native synced audio. Text-to-video, or add a starting image (i2v) and subject references.",
+    approxCost: 0.07,
+    costUnit: "second",
+    // One model id does it all: a starting image animates it (i2v), reference
+    // images keep a subject consistent, and neither is text-to-video (t2v).
+    supports: {},
+    video: {
+      inputKind: "both",
+      referenceImages: true,
+      resolutions: { key: "resolution", options: ["480p", "720p", "1080p"], default: "720p" },
+      aspectRatios: { key: "aspect_ratio", options: ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"], default: "16:9" },
+      durations: { key: "duration", options: [5, 8, 10, 15], default: 5 },
+    },
+    happyPath: { resolution: "720p", aspect_ratio: "16:9", duration: 5, generate_audio: true },
+  },
   {
     id: "alibaba:eu/happyhorse-1.0-t2v",
     label: "HappyHorse · Text→Video",
@@ -187,6 +296,23 @@ export const CATALOG: ModelEntry[] = [
     video: {
       inputKind: "i2v",
       requiresImage: true,
+      resolutions: { key: "resolution", options: ["720P", "1080P"], default: "720P" },
+      durations: { key: "duration", options: [3, 5, 8, 10], default: 5 },
+    },
+    happyPath: { resolution: "720P", duration: 5 },
+  },
+  {
+    id: "alibaba:eu/happyhorse-1.0-r2v",
+    label: "HappyHorse · Reference→Video",
+    provider: "Alibaba",
+    modality: "video",
+    blurb: "Generate a clip that keeps a subject from your reference images consistent, with audio.",
+    approxCost: 0.14,
+    costUnit: "second",
+    supports: {},
+    video: {
+      inputKind: "t2v", // no first frame; the subject comes from reference images
+      referenceImages: true,
       resolutions: { key: "resolution", options: ["720P", "1080P"], default: "720P" },
       durations: { key: "duration", options: [3, 5, 8, 10], default: 5 },
     },
@@ -242,6 +368,23 @@ export const CATALOG: ModelEntry[] = [
     happyPath: { resolution: "480p" },
   },
   {
+    id: "pruna/vace",
+    label: "Wan VACE",
+    provider: "Pruna",
+    modality: "video",
+    blurb: "Text-to-video guided by reference images — character animation and editing. Flat rate.",
+    approxCost: 0.1,
+    costUnit: "clip",
+    supports: {},
+    video: {
+      inputKind: "t2v",
+      referenceImages: true,
+      // VACE takes a WxH `size` (the '*' separator), not a resolution/aspect tier.
+      resolutions: { key: "size", options: ["832*480", "480*832", "1280*720", "720*1280"], default: "832*480" },
+    },
+    happyPath: { size: "832*480" },
+  },
+  {
     id: "vertexai/veo-3.1-generate-001",
     label: "Veo 3.1",
     provider: "Google",
@@ -276,6 +419,90 @@ export const CATALOG: ModelEntry[] = [
       durations: { key: "durationSeconds", options: [4, 6, 8], default: 4 },
     },
     happyPath: { resolution: "720p", aspectRatio: "16:9", durationSeconds: 4, generateAudio: true },
+  },
+
+  // ---- Audio / TTS (sync: POST /v3/audio/speech, like images) ----
+  // The prompt is the text to speak; happyPath carries voice/format/speed.
+  {
+    id: "openai/tts-1",
+    label: "OpenAI TTS-1",
+    provider: "OpenAI",
+    modality: "audio",
+    blurb: "Fast, natural speech with eleven expressive voices. The everyday default.",
+    approxCost: 0.015,
+    costUnit: "1k",
+    default: true,
+    supports: {},
+    audio: {
+      voices: ["alloy", "ash", "ballad", "coral", "echo", "fable", "onyx", "nova", "sage", "shimmer", "verse"],
+      defaultVoice: "alloy",
+      formats: ["mp3", "wav", "opus", "flac"],
+      speed: true,
+    },
+    happyPath: { voice: "alloy", format: "mp3", speed: 1 },
+  },
+  {
+    id: "openai/tts-1-hd",
+    label: "OpenAI TTS-1 HD",
+    provider: "OpenAI",
+    modality: "audio",
+    blurb: "Higher-fidelity OpenAI speech — same voices, crisper output.",
+    approxCost: 0.03,
+    costUnit: "1k",
+    supports: {},
+    audio: {
+      voices: ["alloy", "ash", "ballad", "coral", "echo", "fable", "onyx", "nova", "sage", "shimmer", "verse"],
+      defaultVoice: "nova",
+      formats: ["mp3", "wav", "opus", "flac"],
+      speed: true,
+    },
+    happyPath: { voice: "nova", format: "mp3", speed: 1 },
+  },
+  {
+    id: "xai/tts",
+    label: "Grok TTS",
+    provider: "xAI",
+    modality: "audio",
+    blurb: "xAI's expressive speech in five distinct voices.",
+    approxCost: 0.015,
+    costUnit: "1k",
+    supports: {},
+    audio: {
+      voices: ["eve", "ara", "leo", "rex", "sal"],
+      defaultVoice: "eve",
+      speed: true,
+    },
+    happyPath: { voice: "eve", speed: 1 },
+  },
+  {
+    id: "gemini/gemini-2.5-flash-preview-tts",
+    label: "Gemini 2.5 Flash TTS",
+    provider: "Google",
+    modality: "audio",
+    blurb: "Google's TTS with a large voice roster. Token-priced; outputs WAV.",
+    approxCost: 0.01,
+    costUnit: "1k",
+    supports: {},
+    audio: {
+      voices: ["Kore", "Puck", "Charon", "Zephyr", "Fenrir", "Leda", "Orus", "Aoede"],
+      defaultVoice: "Kore",
+    },
+    happyPath: { voice: "Kore", format: "wav" },
+  },
+  {
+    id: "elevenlabs/eleven_multilingual_v2",
+    label: "Eleven Multilingual v2",
+    provider: "ElevenLabs",
+    modality: "audio",
+    blurb: "Lifelike, emotive speech across 29 languages. Uses the account's default voice.",
+    approxCost: 0.1,
+    costUnit: "1k",
+    supports: {},
+    audio: {
+      formats: ["mp3", "wav", "opus", "pcm"],
+      speed: true,
+    },
+    happyPath: { format: "mp3", speed: 1 },
   },
 ];
 

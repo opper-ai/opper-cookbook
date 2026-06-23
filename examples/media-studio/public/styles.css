@@ -234,10 +234,12 @@ body {
   border-radius: var(--radius-sm);
   padding: 14px;
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items: center;
+  flex-direction: column;
+  gap: 14px;
 }
+.input-slot { display: flex; flex-direction: column; gap: 8px; }
+.input-slot-label { font-size: 12px; color: var(--faint); }
+.reference-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 
 .ref-thumb { position: relative; width: 64px; height: 64px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
 .ref-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -310,6 +312,9 @@ body {
 .result-card img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .result-card video { width: 100%; height: 100%; object-fit: cover; display: block; background: #000; }
 .result-card:not(.loading) img { cursor: zoom-in; }
+.result-card .audio-wrap { display: grid; place-items: center; gap: 12px; padding: 26px 14px; background: var(--bg-input); }
+.result-card .audio-glyph { font-size: 34px; line-height: 1; color: var(--faint); }
+.result-card .audio-wrap audio { width: 100%; height: 36px; }
 .result-card.loading .img-wrap { display: grid; place-items: center; gap: 10px; }
 .result-card.loading .elapsed { font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
 .result-meta { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }

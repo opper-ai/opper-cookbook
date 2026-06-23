@@ -10,15 +10,14 @@ const state = {
   modality: "image", // which media type the picker is showing
   model: null, // selected ModelEntry
   options: {}, // image: top-level options; video: the `parameters` object
-  references: [], // [{ file_id, preview }]
+  inputs: {}, // { image: [{file_id, preview}], reference_images: [...] } — per input slot
   sessionCost: 0,
 };
 
-// Modalities. Audio is the next one to light up.
 const MODALITIES = [
   { id: "image", label: "Image", icon: "▣", live: true },
   { id: "video", label: "Video", icon: "▶", live: true },
-  { id: "audio", label: "Audio", icon: "♪", live: false },
+  { id: "audio", label: "Audio", icon: "♪", live: true },
 ];
 
 // ---------------------------------------------------------------------------
@@ -133,29 +132,18 @@ function closePicker() {
   pickerOnPick = null;
 }
 
-/** Add an image (uploaded or picked) to the current model's input, respecting its max. */
-function addReference(ref) {
-  const max = maxRefs(state.model);
-  if (max === 0) return;
-  if (state.references.length >= max) state.references = state.references.slice(0, max - 1);
-  state.references.push(ref);
-  renderReferenceZone();
-  updateGenerateEnabled();
-}
-
-/** Animate an image into a video: switch to an image-to-video model with it as the source. */
+/** Animate an image into a video: switch to an image-to-video model with it as the starting frame. */
 function animateImage(fileId, src) {
   const i2v = state.catalog.find((m) => m.modality === "video" && m.video && m.video.inputKind !== "t2v");
   if (!i2v) return toast("No image-to-video model available.", true);
   state.modality = "video";
   renderModalities();
   renderModels();
-  selectModel(i2v.id);
-  state.references = [{ file_id: fileId, preview: src }];
-  renderReferenceZone();
-  updateGenerateEnabled();
+  selectModel(i2v.id); // clears state.inputs
+  const slot = inputSlots(i2v).find((s) => s.field === "image");
+  if (slot) addInput("image", slot.max, { file_id: fileId, preview: src });
   switchView("studio");
-  toast(`Source image set on ${i2v.label} — adjust options and Generate.`);
+  toast(`Starting image set on ${i2v.label} — adjust options and Generate.`);
 }
 
 // ---------------------------------------------------------------------------
@@ -197,10 +185,10 @@ function applyIntentPatch(p) {
   if (p.prompt) $("#prompt").value = p.prompt;
 
   const m = state.model;
-  if (p.aspect_ratio && m.dimension.kind === "aspect" && m.dimension.options.includes(p.aspect_ratio)) {
+  if (p.aspect_ratio && m.dimension?.kind === "aspect" && m.dimension.options.includes(p.aspect_ratio)) {
     state.options.aspect_ratio = p.aspect_ratio;
   }
-  if (p.size && m.dimension.kind === "size" && m.dimension.options.includes(p.size)) {
+  if (p.size && m.dimension?.kind === "size" && m.dimension.options.includes(p.size)) {
     state.options.size = p.size;
   }
   if (p.quality && m.qualities?.includes(p.quality)) state.options.quality = p.quality;
@@ -246,24 +234,28 @@ function galleryCard(item) {
   const fileId = item.file_id;
   const src = `/s/${fileId}`;
   const isVideo = item.kind === "video";
+  const isAudio = item.kind === "audio";
+  const isImage = !isVideo && !isAudio;
   const card = document.createElement("div");
   card.className = "result-card";
-  const media = isVideo
-    ? `<video src="${src}" controls playsinline preload="metadata"></video>`
-    : `<img loading="lazy" src="${src}" alt="${esc(item.prompt || "saved creation")}"/>`;
+  const body = isVideo
+    ? `<div class="img-wrap"><video src="${src}" controls playsinline preload="metadata"></video></div>`
+    : isAudio
+      ? `<div class="audio-wrap"><span class="audio-glyph">♪</span><audio controls src="${src}"></audio></div>`
+      : `<div class="img-wrap"><img loading="lazy" src="${src}" alt="${esc(item.prompt || "saved creation")}"/></div>`;
   card.innerHTML = `
-    <div class="img-wrap">${media}</div>
+    ${body}
     <div class="result-meta">
       <span class="rm-cost" title="${esc(item.prompt || "")}">${esc(item.model || "")}</span>
       <div class="result-actions">
-        ${isVideo ? "" : '<button class="icon-btn" data-act="remix">⇄ Remix</button>'}
-        ${isVideo ? "" : '<button class="icon-btn" data-act="animate">🎬 Video</button>'}
+        ${isImage ? '<button class="icon-btn" data-act="remix">⇄ Remix</button>' : ""}
+        ${isImage ? '<button class="icon-btn" data-act="animate">🎬 Video</button>' : ""}
         <button class="icon-btn" data-act="share">Share</button>
         <button class="icon-btn" data-act="download">Download</button>
         <button class="icon-btn" data-act="delete" title="Delete file">🗑</button>
       </div>
     </div>`;
-  if (!isVideo) {
+  if (isImage) {
     card.querySelector("img").addEventListener("click", () => openLightbox(src));
     card.querySelector('[data-act="remix"]').addEventListener("click", () => {
       remixFromResult({ file_id: fileId }, src);
@@ -273,7 +265,9 @@ function galleryCard(item) {
   }
   card.querySelector('[data-act="share"]').addEventListener("click", () => copyShareLink(fileId));
   card.querySelector('[data-act="download"]').addEventListener("click", () =>
-    downloadImage(src, { file_id: fileId, mime_type: isVideo ? "video/mp4" : item.mime_type }),
+    isAudio
+      ? downloadAudio(src, { file_id: fileId, mime_type: item.mime_type })
+      : downloadImage(src, { file_id: fileId, mime_type: isVideo ? "video/mp4" : item.mime_type }),
   );
   wireDelete(card.querySelector('[data-act="delete"]'), fileId, card);
   return card;
@@ -345,7 +339,7 @@ function renderModalities() {
 function switchModality(modality) {
   if (modality === state.modality) return;
   state.modality = modality;
-  state.references = [];
+  state.inputs = {};
   renderModalities();
   renderModels();
   selectModel(defaultModelFor(modality).id);
@@ -353,7 +347,8 @@ function switchModality(modality) {
 
 function costLabel(m) {
   const n = m.approxCost.toFixed(m.approxCost < 0.01 ? 3 : 2);
-  const unit = m.costUnit === "second" ? "/s" : m.costUnit === "clip" ? "/clip" : "";
+  const unit =
+    m.costUnit === "second" ? "/s" : m.costUnit === "clip" ? "/clip" : m.costUnit === "1k" ? "/1K" : "";
   return `~$${n}${unit}`;
 }
 
@@ -384,55 +379,100 @@ function selectModel(id) {
   if (!model) return;
   state.model = model;
   state.options = { ...model.happyPath };
+  state.inputs = {};
   document.querySelectorAll(".model-card").forEach((c) => c.classList.toggle("active", c.dataset.id === id));
   $("#advanced-toggle").hidden = false;
+  updateComposerForModality();
   renderAdvanced();
   renderReferenceZone();
   updateGenerateEnabled();
+}
+
+// The intent bar structures visual prompts; for speech the prompt is the literal
+// text to speak, so hide it and relabel the box.
+function updateComposerForModality() {
+  const mod = state.model?.modality;
+  $("#intent-bar").hidden = mod === "audio";
+  $("#prompt").placeholder =
+    mod === "audio" ? "The text to speak…" : "A prompt… or use the smart bar above to fill everything in.";
 }
 
 // ---------------------------------------------------------------------------
 // Reference media — upload to /v3/files, reuse as reference / edit source
 // ---------------------------------------------------------------------------
 
-// What input images (if any) the selected model takes, and how they're sent.
-function inputSpec(m) {
-  if (!m) return { max: 0 };
+// The input-image slots the selected model accepts. A model can offer BOTH a
+// "starting image" (→ `image`: the source to edit, or a video's first frame) and
+// "references" (→ `reference_images`: subject/style guides) — the API treats them
+// as distinct fields, so we render a slot for each. Order: starting image first.
+function inputSlots(m) {
+  if (!m) return [];
   if (m.modality === "image") {
-    if (m.supports.referenceImages) return { max: 8, field: "reference_images", noun: "reference" };
-    if (m.supports.imageEdit) return { max: 1, field: "image", noun: "image to edit" };
-    return { max: 0 };
+    const slots = [];
+    if (m.supports.imageEdit) slots.push({ field: "image", noun: "starting image", max: 1 });
+    if (m.supports.referenceImages) slots.push({ field: "reference_images", noun: "reference", max: 8 });
+    return slots;
   }
-  // video
-  const v = m.video || {};
-  if (v.referenceImages) return { max: 3, field: "reference_images", noun: "reference" };
-  if (v.inputKind === "i2v" || v.inputKind === "both") {
-    return { max: 1, field: "image", noun: "source image", required: !!v.requiresImage };
+  if (m.modality === "video") {
+    const v = m.video || {};
+    const slots = [];
+    if (v.inputKind === "i2v" || v.inputKind === "both")
+      slots.push({ field: "image", noun: "starting image", max: 1, required: !!v.requiresImage });
+    if (v.referenceImages) slots.push({ field: "reference_images", noun: "reference", max: 3 });
+    return slots;
   }
-  return { max: 0 };
+  return []; // audio takes no input image
 }
 
-function maxRefs(m) {
-  return inputSpec(m).max;
+function slotItems(field) {
+  return state.inputs[field] || (state.inputs[field] = []);
+}
+
+/** Add an image (uploaded or picked) to a slot, respecting its max (max 1 replaces). */
+function addInput(field, max, ref) {
+  const items = slotItems(field);
+  if (max === 1) items.length = 0;
+  else if (items.length >= max) items.shift();
+  items.push(ref);
+  renderReferenceZone();
+  updateGenerateEnabled();
 }
 
 function renderReferenceZone() {
   const zone = $("#reference-zone");
-  const spec = inputSpec(state.model);
-  if (spec.max === 0) {
+  const slots = inputSlots(state.model);
+  // Drop any stored inputs the current model doesn't accept.
+  for (const f of Object.keys(state.inputs)) {
+    if (!slots.some((s) => s.field === f)) delete state.inputs[f];
+  }
+  if (!slots.length) {
     zone.hidden = true;
-    state.references = [];
     return;
   }
   zone.hidden = false;
-  if (state.references.length > spec.max) state.references = state.references.slice(0, spec.max);
+  zone.replaceChildren(...slots.map(renderSlot));
+}
 
-  const thumbs = state.references.map((ref, i) => {
+function renderSlot(slot) {
+  const items = slotItems(slot.field);
+  if (items.length > slot.max) items.length = slot.max;
+
+  const group = document.createElement("div");
+  group.className = "input-slot";
+  const need = slot.required ? " (required)" : "";
+  const labelText = slot.field === "image" ? `Starting image${need}` : `References${need}`;
+  const lab = document.createElement("div");
+  lab.className = "input-slot-label";
+  lab.textContent = labelText;
+  const row = document.createElement("div");
+  row.className = "reference-row";
+
+  const thumbs = items.map((ref, i) => {
     const t = document.createElement("div");
     t.className = "ref-thumb";
-    t.innerHTML = `<img src="${ref.preview}" alt="reference"/><button class="ref-x" title="Remove">×</button>`;
+    t.innerHTML = `<img src="${ref.preview}" alt="${esc(slot.noun)}"/><button class="ref-x" title="Remove">×</button>`;
     t.querySelector(".ref-x").addEventListener("click", () => {
-      state.references.splice(i, 1);
+      items.splice(i, 1);
       renderReferenceZone();
       updateGenerateEnabled();
     });
@@ -441,22 +481,23 @@ function renderReferenceZone() {
 
   const addBtn = document.createElement("label");
   addBtn.className = "ref-add";
-  const need = spec.required ? " (required)" : "";
-  addBtn.innerHTML = `+ Add ${spec.noun}${need}<input type="file" accept="image/*" hidden ${spec.max > 1 ? "multiple" : ""}/>`;
-  addBtn.querySelector("input").addEventListener("change", (e) => onPickFiles(e.target.files));
+  addBtn.innerHTML = `+ Add ${esc(slot.noun)}<input type="file" accept="image/*" hidden ${slot.max > 1 ? "multiple" : ""}/>`;
+  addBtn.querySelector("input").addEventListener("change", (e) => onPickFiles(e.target.files, slot));
 
   const pickBtn = document.createElement("button");
   pickBtn.className = "ref-pick";
   pickBtn.textContent = "Choose from gallery";
-  pickBtn.addEventListener("click", () => openPicker(addReference));
+  pickBtn.addEventListener("click", () => openPicker((ref) => addInput(slot.field, slot.max, ref)));
 
-  const controls = state.references.length >= spec.max ? [] : [addBtn, pickBtn];
-  zone.replaceChildren(...thumbs, ...controls);
+  const controls = items.length >= slot.max ? [] : [addBtn, pickBtn];
+  row.replaceChildren(...thumbs, ...controls);
+  group.append(lab, row);
+  return group;
 }
 
-async function onPickFiles(fileList) {
-  const max = maxRefs(state.model);
-  const files = [...fileList].slice(0, max - state.references.length);
+async function onPickFiles(fileList, slot) {
+  const items = slotItems(slot.field);
+  const files = [...fileList].slice(0, slot.max - items.length);
   for (const file of files) {
     const preview = URL.createObjectURL(file);
     try {
@@ -468,9 +509,7 @@ async function onPickFiles(fileList) {
         handleApiError(res.status, data);
         continue;
       }
-      state.references.push({ file_id: data.id, preview });
-      renderReferenceZone();
-      updateGenerateEnabled();
+      addInput(slot.field, slot.max, { file_id: data.id, preview });
     } catch (err) {
       toast("Upload failed: " + err.message, true);
     }
@@ -479,15 +518,14 @@ async function onPickFiles(fileList) {
 
 /** Remix: feed a generated result back in as a reference (no re-upload). */
 function remixFromResult(item, src) {
-  if (maxRefs(state.model) === 0) {
-    // Current model can't take references — switch to the capable default.
-    const capable = state.catalog.find((m) => m.supports.referenceImages) ?? state.model;
+  // Need a model with a references slot — switch to the capable default if not.
+  if (!inputSlots(state.model).some((s) => s.field === "reference_images")) {
+    const capable = state.catalog.find((m) => m.modality === "image" && m.supports.referenceImages) ?? state.model;
     selectModel(capable.id);
   }
-  const max = maxRefs(state.model);
-  if (state.references.length >= max) state.references = state.references.slice(0, max - 1);
-  state.references.push({ file_id: item.file_id, preview: src });
-  renderReferenceZone();
+  const slot = inputSlots(state.model).find((s) => s.field === "reference_images");
+  if (!slot) return;
+  addInput("reference_images", slot.max, { file_id: item.file_id, preview: src });
   $("#prompt").focus();
   toast("Added as reference — tweak the prompt and generate.");
 }
@@ -506,6 +544,7 @@ function toggleAdvanced() {
 function renderAdvanced() {
   const m = state.model;
   if (m.modality === "video") return renderVideoAdvanced(m);
+  if (m.modality === "audio") return renderAudioAdvanced(m);
 
   const panel = $("#advanced-panel");
   const fields = [];
@@ -587,6 +626,42 @@ function renderVideoAdvanced(m) {
   panel.replaceChildren(...fields);
 }
 
+// Audio advanced options — voice / format / speed, from the model's audio config.
+// Each control writes into state.options (the top-level speech params).
+function renderAudioAdvanced(m) {
+  const panel = $("#advanced-panel");
+  const a = m.audio || {};
+  const fields = [];
+  if (a.voices?.length) {
+    fields.push(
+      fieldChips("Voice", a.voices, state.options.voice ?? a.defaultVoice, (v) => {
+        state.options.voice = v;
+      }),
+    );
+  }
+  if (a.formats?.length) {
+    fields.push(
+      fieldChips("Format", a.formats, state.options.format, (v) => {
+        state.options.format = v;
+      }),
+    );
+  }
+  if (a.speed) {
+    fields.push(
+      fieldChips(
+        "Speed",
+        [0.5, 0.75, 1, 1.25, 1.5, 2],
+        state.options.speed ?? 1,
+        (v) => {
+          state.options.speed = v;
+        },
+        (n) => `${n}×`,
+      ),
+    );
+  }
+  panel.replaceChildren(...fields);
+}
+
 function fieldChips(label, options, current, onChange, fmt) {
   const wrap = document.createElement("div");
   wrap.className = "field";
@@ -631,25 +706,29 @@ function fieldNumber(label, min, max, value, onChange) {
 // ---------------------------------------------------------------------------
 
 function updateGenerateEnabled() {
-  const spec = inputSpec(state.model);
-  const needsImage = spec.required && state.references.length === 0;
-  const ready = Boolean(state.model && $("#prompt").value.trim()) && !needsImage;
+  const missingRequired = inputSlots(state.model).some(
+    (s) => s.required && slotItems(s.field).length === 0,
+  );
+  const ready = Boolean(state.model && $("#prompt").value.trim()) && !missingRequired;
   $("#generate-btn").disabled = !ready;
 }
 
-// Attach any uploaded input images to a payload per the model's input spec.
+// Attach any uploaded input images to a payload, one field per filled slot:
+// `image` takes a single starting image; `reference_images` takes the list.
 function attachInputs(payload) {
-  if (!state.references.length) return;
-  const ids = state.references.map((r) => r.file_id);
-  const spec = inputSpec(state.model);
-  if (spec.field === "reference_images") payload.reference_images = ids;
-  else if (spec.field === "image") payload.image = ids[0];
+  for (const slot of inputSlots(state.model)) {
+    const ids = slotItems(slot.field).map((r) => r.file_id);
+    if (!ids.length) continue;
+    if (slot.field === "image") payload.image = ids[0];
+    else payload[slot.field] = ids;
+  }
 }
 
 async function generate() {
   const prompt = $("#prompt").value.trim();
   if (!state.model || !prompt) return;
   if (state.model.modality === "video") return generateVideo(prompt);
+  if (state.model.modality === "audio") return generateAudio(prompt);
 
   $("#empty-state").hidden = true;
   const card = addLoadingCard();
@@ -765,6 +844,93 @@ function fillVideoCard(card, data, prompt, model) {
   const shareBtn = card.querySelector('[data-act="share"]');
   if (data.file_id) shareBtn.addEventListener("click", () => copyShareLink(data.file_id));
   else shareBtn.remove();
+}
+
+// ---------------------------------------------------------------------------
+// Audio — synchronous TTS, like images: one request, one clip back
+// ---------------------------------------------------------------------------
+
+async function generateAudio(text) {
+  $("#empty-state").hidden = true;
+  const card = addLoadingCard();
+  setGenerating(true);
+
+  const o = state.options;
+  const payload = { model: state.model.id, input: text };
+  if (o.voice) payload.voice = o.voice;
+  if (o.format) payload.format = o.format;
+  if (typeof o.speed === "number" && o.speed !== 1) payload.speed = o.speed;
+
+  try {
+    const res = await fetch("/api/speech", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      clearCard(card);
+      handleApiError(res.status, data);
+      return;
+    }
+    fillAudioCard(card, data, text);
+    if (data.usage?.cost) bumpCost(data.usage.cost);
+  } catch (err) {
+    clearCard(card);
+    toast("Network error: " + err.message, true);
+  } finally {
+    setGenerating(false);
+  }
+}
+
+function fillAudioCard(card, data, text) {
+  clearInterval(card._timer);
+  const audio = data.audio || {};
+  const src = audioSrc(audio);
+  const cost = data.usage?.cost ? `$${data.usage.cost.toFixed(3)}` : "";
+  card.classList.remove("loading");
+  card.innerHTML = `
+    <div class="audio-wrap"><span class="audio-glyph">♪</span><audio controls src="${src}"></audio></div>
+    <div class="result-meta">
+      <span class="rm-cost" title="${esc(text)}">${esc(state.model.label)}${cost ? " · " + cost : ""}</span>
+      <div class="result-actions">
+        <button class="icon-btn" data-act="share">Share</button>
+        <button class="icon-btn" data-act="download">Download</button>
+      </div>
+    </div>`;
+  card.querySelector('[data-act="download"]').addEventListener("click", () =>
+    downloadAudio(src, { file_id: audio.file_id, mime_type: audio.mime_type }),
+  );
+  const shareBtn = card.querySelector('[data-act="share"]');
+  if (audio.file_id) shareBtn.addEventListener("click", () => copyShareLink(audio.file_id));
+  else shareBtn.remove();
+}
+
+function audioSrc(audio) {
+  if (audio.url) return audio.url;
+  if (audio.file_id) return `/s/${audio.file_id}`;
+  if (audio.b64_json) return `data:${audio.mime_type || "audio/mpeg"};base64,${audio.b64_json}`;
+  return "";
+}
+
+function downloadAudio(src, item) {
+  const m = item.mime_type || "audio/mpeg";
+  const ext = m.includes("wav")
+    ? ".wav"
+    : m.includes("flac")
+      ? ".flac"
+      : m.includes("opus") || m.includes("ogg")
+        ? ".opus"
+        : m.includes("aac")
+          ? ".aac"
+          : m.includes("pcm")
+            ? ".pcm"
+            : ".mp3";
+  const a = document.createElement("a");
+  a.href = src;
+  a.download = (item.file_id || "speech") + ext;
+  a.target = "_blank";
+  a.click();
 }
 
 // ---------------------------------------------------------------------------
