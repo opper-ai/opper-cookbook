@@ -577,6 +577,17 @@ function renderAdvanced() {
     );
   }
 
+  // Quality/effort scale (e.g. Reve test_time_scaling) — forwarded via parameters.
+  // Higher = more compute/detail and proportionally more credits.
+  if (m.effort) {
+    const cur = state.options.parameters?.[m.effort.key] ?? m.effort.default;
+    fields.push(
+      fieldChips("Quality (1–5, higher costs more)", m.effort.options, cur, (v) => {
+        state.options.parameters = { ...(state.options.parameters || {}), [m.effort.key]: v };
+      }),
+    );
+  }
+
   // Number of images.
   if ((m.supports.n ?? 1) > 1) {
     fields.push(

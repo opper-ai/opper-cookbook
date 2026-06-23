@@ -48,6 +48,9 @@ export type ModelEntry = {
   dimension?: Dimension;
   qualities?: string[];
   qualityDefault?: string;
+  // A numeric quality/effort knob forwarded under parameters[key] — e.g. Reve's
+  // test_time_scaling (higher = more compute/detail, billed proportionally).
+  effort?: { key: string; options: number[]; default: number };
   // video
   video?: VideoConfig;
   // audio (TTS)
@@ -240,6 +243,9 @@ export const CATALOG: ModelEntry[] = [
       options: ["1:1", "16:9", "9:16", "3:2", "2:3", "4:3", "3:4"],
       default: "1:1",
     },
+    // Reve's test_time_scaling: 1 = base, up to 5 = more effort/detail (billed
+    // proportionally). The provider accepts 1–15 but >5 rarely helps.
+    effort: { key: "test_time_scaling", options: [1, 2, 3, 4, 5], default: 1 },
     supports: { imageEdit: true, referenceImages: true, n: 1 },
     happyPath: { aspect_ratio: "1:1", n: 1 },
   },
