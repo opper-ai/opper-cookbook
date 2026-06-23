@@ -166,7 +166,7 @@ type Creation = {
   model: string;
   prompt: string;
   created: number;
-  kind: "image" | "video";
+  kind: "image" | "video" | "audio";
 };
 
 const DATA_DIR = join(__dirname, "data");
@@ -345,8 +345,21 @@ async function presignedUrl(session: Session, fileId: string): Promise<string | 
 app.get("/api/catalog", (_req, res) => res.json({ models: CATALOG }));
 
 /** Upload a reference image — proxy to POST /v3/files, returns a reusable file_id. */
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
-app.post("/api/files", upload.single("file"), async (req, res) => {
+// Match the backend /v3/files cap (50 MB) so the limit doesn't bite earlier here.
+const MAX_UPLOAD_MB = 50;
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_MB * 1024 * 1024 } });
+// Wrap multer so its errors (e.g. file too large) come back as clean JSON instead
+// of an unhandled stack trace + a non-JSON body the browser can't parse.
+const uploadFile = (req: any, res: any, next: any) =>
+  upload.single("file")(req, res, (err: any) => {
+    if (!err) return next();
+    const tooLarge = err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE";
+    res.status(tooLarge ? 413 : 400).json({
+      code: "bad_request",
+      error: tooLarge ? `Image is too large (max ${MAX_UPLOAD_MB} MB).` : err.message || "Upload failed.",
+    });
+  });
+app.post("/api/files", uploadFile, async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ code: "disconnected", error: "Not logged in." });
   if (!req.file) return res.status(400).json({ code: "bad_request", error: "No file uploaded." });
@@ -431,6 +444,57 @@ app.post("/api/generate", async (req, res) => {
     res.json(data);
   } catch (err: any) {
     console.error(`✗ images  ${body.model}  ${err?.message}`);
+    res.status(502).json({ code: "network", error: err?.message || "Failed to reach Opper." });
+  }
+});
+
+/** Generate speech (TTS) — proxy to POST /v3/audio/speech (synchronous, like images). */
+app.post("/api/speech", async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ code: "disconnected", error: "Not logged in." });
+
+  const b = req.body ?? {};
+  if (!b.model || !b.input) {
+    return res.status(400).json({ code: "bad_request", error: "model and input are required." });
+  }
+
+  // Forward only the fields /v3/audio/speech understands; store by default so each
+  // clip comes back with a reusable file_id and a presigned url.
+  const body: Record<string, unknown> = { model: b.model, input: b.input, store: true };
+  if (b.voice) body.voice = b.voice;
+  if (b.format) body.format = b.format;
+  if (typeof b.speed === "number") body.speed = b.speed;
+  if (b.parameters && typeof b.parameters === "object") body.parameters = b.parameters;
+
+  const started = Date.now();
+  console.log(`→ speech  ${body.model}  "${String(b.input).slice(0, 50)}"`);
+  try {
+    const upstream = await opperFetch(session, "/v3/audio/speech", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!upstream.ok) {
+      console.warn(`✗ speech  ${body.model}  ${upstream.status}  (${Date.now() - started}ms)`);
+      return relayError(res, upstream);
+    }
+    const data = await upstream.json();
+    console.log(`✓ speech  ${body.model}  ${Date.now() - started}ms  $${data.usage?.cost ?? "?"}`);
+    if (data.audio?.file_id) {
+      addCreations([
+        {
+          account: accountId(session.apiKey),
+          file_id: data.audio.file_id as string,
+          model: String(body.model),
+          prompt: String(b.input),
+          created: Date.now(),
+          kind: "audio" as const,
+        },
+      ]);
+    }
+    res.json(data);
+  } catch (err: any) {
+    console.error(`✗ speech  ${body.model}  ${err?.message}`);
     res.status(502).json({ code: "network", error: err?.message || "Failed to reach Opper." });
   }
 });

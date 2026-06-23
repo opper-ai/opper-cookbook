@@ -2,14 +2,16 @@
 
 A click-first **media generation studio** built on Opper. Log in, pick what to make, pick a
 model, and get a great result on the happy path — "Advanced options" stay tucked away until
-you want them. Images and video today; structured to grow into audio next.
+you want them. Images, video, and speech today; one catalog drives them all.
 
 It showcases a lot of Opper in one small app:
 
 - **`/v3/images`** — synchronous image generation across many providers (OpenAI, Google,
-  xAI, Pruna, Black Forest Labs) from one catalog.
-- **`/v3/videos`** — asynchronous text/image-to-video (Alibaba HappyHorse, xAI, Pruna, Veo):
-  submit a job, poll, then play the clip inline.
+  xAI, Pruna, Black Forest Labs, fal.ai, Reve) from one catalog.
+- **`/v3/videos`** — asynchronous text/image-to-video (ByteDance Seedance, Alibaba HappyHorse,
+  xAI, Pruna, Veo): submit a job, poll, then play the clip inline.
+- **`/v3/audio/speech`** — synchronous text-to-speech (OpenAI, xAI, Google, ElevenLabs) with
+  voice / format / speed controls.
 - **`/v3/files`** — every result is stored, so it's reusable as a reference and shareable.
 - **`/v3/call`** with `output_schema` — the smart "intent bar" turns a sentence into
   prefilled settings (a structured-output demo).
@@ -75,10 +77,25 @@ account's API key. That also lets the gallery show each image's model and prompt
 
 ## The model catalog
 
-Everything the UI shows — the picker, the advanced drawer, the reference slots — is generated
+Everything the UI shows — the picker, the advanced drawer, the input slots — is generated
 from `catalog.ts`. Each entry declares its dimension style (pixel `size` vs `aspect` ratio),
-quality tiers, reference support, and a `happyPath` of great defaults. **Adding a model is a
+quality tiers, input support, and a `happyPath` of great defaults. **Adding a model is a
 data edit**, not a UI change.
+
+### Starting image vs. references
+
+Two kinds of image input are distinct fields on the API, and a model can take **both**:
+
+- **Starting image** (`image`) — the source the model works *from*: the picture to edit, or a
+  video's first frame (image-to-video). Single image.
+- **References** (`reference_images`) — subject/style guides the model is *influenced by*
+  without reproducing them as a frame. Up to several.
+
+A catalog entry opts into each slot independently (`supports.imageEdit` → starting image,
+`supports.referenceImages` → references for images; `video.inputKind` + `video.referenceImages`
+for video). Models that support both — e.g. GPT Image, the Gemini image models, Reve, Seedance,
+Veo — render both slots, so you can animate *this* frame while keeping *that* character
+consistent. The studio sends each filled slot as its own field.
 
 ## Video
 
@@ -90,19 +107,32 @@ video's per-model knobs (duration, resolution, aspect) aren't top-level fields �
 `aspectRatio`; HappyHorse wants `resolution: "720P"` uppercase). Each catalog entry's `video`
 block carries the right keys, and `happyPath` is the baseline `parameters` object.
 
-Image-to-video models reuse the reference-upload flow; ones that *require* a source image
-(e.g. HappyHorse i2v) gate Generate until you add one.
+Image-to-video models reuse the same input slots as images (starting image + references); ones
+that *require* a starting image (e.g. HappyHorse i2v) gate Generate until you add one.
 
-> The default video model (HappyHorse text-to-video) is live-verified. The other video entries
-> follow the model specs but aren't all individually verified — provider param casing is fiddly,
-> so check the server log if one fails (errors are relayed verbatim).
+> The default video model (HappyHorse text-to-video) and Seedance 2.0 image-to-video are
+> live-verified. The other video entries follow the model specs but aren't all individually
+> verified — provider param casing is fiddly, so check the server log if one fails (errors are
+> relayed verbatim).
 
-## Extending to audio
+## Audio
 
-The seams are in place: add `modality: "audio"` entries to `catalog.ts`, flip Audio to
-`live: true` in `public/app.js` (`MODALITIES`), and point Generate at `/v3/audio/speech`
-(synchronous, like images). The picker, advanced options, gallery, share, and delete are all
-modality-agnostic.
+Audio (text-to-speech) reuses the same catalog/picker/gallery shell as images — it's
+**synchronous**, like `/v3/images`. The prompt box becomes "the text to speak", the advanced
+panel offers **voice / format / speed** (from each model's `audio` config in `catalog.ts`), and
+`POST /v3/audio/speech` returns the clip, which plays inline and is stored to `/v3/files` so it
+lands in the gallery and shares like everything else. The intent bar is hidden here — speech
+text is literal, not a visual prompt to structure.
+
+Each `modality: "audio"` catalog entry declares its `voices`, `formats`, and whether it takes a
+`speed` knob; voice/format are validated server-side against the model. Providers that use
+account-scoped voice ids (ElevenLabs) omit `voices` and use the account default.
+
+## Extending to transcription (STT)
+
+The other half of audio — speech-to-text — is `POST /v3/audio/transcriptions` (audio in, text
+out). It inverts the prompt→media shell (you upload audio and get a transcript), so it'd be a
+small dedicated flow rather than another catalog entry. Not wired yet.
 
 ## Notes
 
