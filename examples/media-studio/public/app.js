@@ -460,10 +460,20 @@ function renderSlot(slot) {
   const group = document.createElement("div");
   group.className = "input-slot";
   const need = slot.required ? " (required)" : "";
-  const labelText = slot.field === "image" ? `Starting image${need}` : `References${need}`;
+  const isImg = slot.field === "image";
+  const isVideo = state.model?.modality === "video";
+  const title = (isImg ? "Starting image" : "References") + need;
+  // The distinction is fuzzy across image models, so spell out what each does.
+  const hint = isImg
+    ? isVideo
+      ? "first frame to animate"
+      : "edits this image"
+    : isVideo
+      ? "keeps this subject consistent"
+      : "guides a new image";
   const lab = document.createElement("div");
   lab.className = "input-slot-label";
-  lab.textContent = labelText;
+  lab.innerHTML = `${esc(title)} <span class="input-slot-hint">· ${esc(hint)}</span>`;
   const row = document.createElement("div");
   row.className = "reference-row";
 

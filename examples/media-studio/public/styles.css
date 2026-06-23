@@ -238,7 +238,8 @@ body {
   gap: 14px;
 }
 .input-slot { display: flex; flex-direction: column; gap: 8px; }
-.input-slot-label { font-size: 12px; color: var(--faint); }
+.input-slot-label { font-size: 12px; color: var(--muted); }
+.input-slot-hint { color: var(--faint); }
 .reference-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 
 .ref-thumb { position: relative; width: 64px; height: 64px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
