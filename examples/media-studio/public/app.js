@@ -8,10 +8,12 @@ const state = {
   me: null,
   catalog: [],
   modality: "image", // which media type the picker is showing
+  workflow: "all", // capability filter within the current modality
   model: null, // selected ModelEntry
   options: {}, // image: top-level options; video: the `parameters` object
   inputs: {}, // { image: [{file_id, preview}], reference_images: [...] } — per input slot
   sessionCost: 0,
+  gallery: null, // cached /api/gallery items[] (null = not loaded yet); see getGallery
 };
 
 const MODALITIES = [
@@ -19,6 +21,20 @@ const MODALITIES = [
   { id: "video", label: "Video", icon: "▶", live: true },
   { id: "audio", label: "Audio", icon: "♪", live: true },
 ];
+
+const WORKFLOWS = {
+  image: [
+    { id: "all", label: "All" },
+    { id: "generate", label: "Prompt only" },
+    { id: "edit", label: "Edit / remix" },
+  ],
+  video: [
+    { id: "all", label: "All" },
+    { id: "generate", label: "Text to video" },
+    { id: "edit", label: "Animate / refs" },
+  ],
+  audio: [{ id: "all", label: "Speech" }],
+};
 
 // ---------------------------------------------------------------------------
 // Boot
@@ -45,6 +61,7 @@ async function boot() {
   const { models } = await (await fetch("/api/catalog")).json();
   state.catalog = models;
   renderModalities();
+  renderWorkflows();
   renderModels();
   selectModel(defaultModelFor(state.modality).id);
 
@@ -96,14 +113,47 @@ function closeLightbox() {
 
 let pickerOnPick = null;
 
+// ---------------------------------------------------------------------------
+// Gallery cache
+// ---------------------------------------------------------------------------
+// The picker and the Gallery tab share one in-memory copy of /api/gallery, so
+// reopening the picker is instant instead of refetching + rebuilding each time.
+// We keep it correct from this tab by patching on create/delete; it only hits
+// the network again after `force` (or the first load). null = not loaded yet.
+
+async function getGallery({ force = false } = {}) {
+  if (!force && state.gallery) return state.gallery;
+  const res = await fetch("/api/gallery");
+  const data = await res.json();
+  if (!res.ok) {
+    const err = new Error(data?.error || `Error ${res.status}`);
+    err.status = res.status;
+    err.body = data;
+    throw err;
+  }
+  state.gallery = data.items || [];
+  return state.gallery;
+}
+
+// Newest first, matching the server's sort, so a just-made item lands on top.
+// No-op until the gallery has been loaded once: a later fetch picks it up
+// anyway (the server records the creation before we get here).
+function cacheCreation(entry) {
+  if (state.gallery) state.gallery.unshift(entry);
+}
+
+function uncacheCreation(fileId) {
+  if (state.gallery) state.gallery = state.gallery.filter((c) => c.file_id !== fileId);
+}
+
 async function openPicker(onPick) {
   pickerOnPick = onPick;
   const grid = $("#picker-grid");
   grid.replaceChildren();
   $("#picker").hidden = false;
   try {
-    const { items } = await (await fetch("/api/gallery")).json();
-    const imgs = (items || []).filter((i) => i.kind !== "video");
+    const items = await getGallery();
+    const imgs = items.filter((i) => i.kind !== "video");
     if (!imgs.length) {
       grid.innerHTML = '<p class="muted" style="padding:20px">No saved images yet.</p>';
       return;
@@ -137,7 +187,9 @@ function animateImage(fileId, src) {
   const i2v = state.catalog.find((m) => m.modality === "video" && m.video && m.video.inputKind !== "t2v");
   if (!i2v) return toast("No image-to-video model available.", true);
   state.modality = "video";
+  state.workflow = "edit";
   renderModalities();
+  renderWorkflows();
   renderModels();
   selectModel(i2v.id); // clears state.inputs
   const slot = inputSlots(i2v).find((s) => s.field === "image");
@@ -217,15 +269,14 @@ async function loadGallery() {
   grid.replaceChildren();
   empty.hidden = true;
   try {
-    const res = await fetch("/api/gallery");
-    const data = await res.json();
-    if (!res.ok) return handleApiError(res.status, data);
-    if (!data.items?.length) {
+    const items = await getGallery();
+    if (!items.length) {
       empty.hidden = false;
       return;
     }
-    grid.replaceChildren(...data.items.map(galleryCard));
+    grid.replaceChildren(...items.map(galleryCard));
   } catch (err) {
+    if (err.status) return handleApiError(err.status, err.body);
     toast("Could not load gallery: " + err.message, true);
   }
 }
@@ -248,11 +299,11 @@ function galleryCard(item) {
     <div class="result-meta">
       <span class="rm-cost" title="${esc(item.prompt || "")}">${esc(item.model || "")}</span>
       <div class="result-actions">
-        ${isImage ? '<button class="icon-btn" data-act="remix">⇄ Remix</button>' : ""}
-        ${isImage ? '<button class="icon-btn" data-act="animate">🎬 Video</button>' : ""}
+        ${isImage ? '<button class="icon-btn" data-act="remix">Remix</button>' : ""}
+        ${isImage ? '<button class="icon-btn" data-act="animate">Animate</button>' : ""}
         <button class="icon-btn" data-act="share">Share</button>
         <button class="icon-btn" data-act="download">Download</button>
-        <button class="icon-btn" data-act="delete" title="Delete file">🗑</button>
+        <button class="icon-btn" data-act="delete" title="Delete file">Delete</button>
       </div>
     </div>`;
   if (isImage) {
@@ -280,11 +331,11 @@ function wireDelete(btn, fileId, card) {
   btn.addEventListener("click", async () => {
     if (!armed) {
       armed = true;
-      btn.textContent = "Sure?";
+      btn.textContent = "Delete?";
       btn.classList.add("armed");
       armTimer = setTimeout(() => {
         armed = false;
-        btn.textContent = "🗑";
+        btn.textContent = "Delete";
         btn.classList.remove("armed");
       }, 3000);
       return;
@@ -297,17 +348,18 @@ function wireDelete(btn, fileId, card) {
       if (!res.ok) {
         handleApiError(res.status, await res.json().catch(() => ({})));
         btn.disabled = false;
-        btn.textContent = "🗑";
+        btn.textContent = "Delete";
         btn.classList.remove("armed");
         armed = false;
         return;
       }
       card.remove();
+      uncacheCreation(fileId);
       toast("Deleted.");
     } catch (err) {
       toast("Delete failed: " + err.message, true);
       btn.disabled = false;
-      btn.textContent = "🗑";
+      btn.textContent = "Delete";
       btn.classList.remove("armed");
       armed = false;
     }
@@ -318,8 +370,35 @@ function wireDelete(btn, fileId, card) {
 // Rail: modalities + models
 // ---------------------------------------------------------------------------
 
+function defaultWorkflowFor(modality) {
+  return WORKFLOWS[modality]?.[0]?.id ?? "all";
+}
+
+function workflowOptions(modality = state.modality) {
+  return WORKFLOWS[modality] ?? WORKFLOWS.image;
+}
+
+function modelMatchesWorkflow(m, workflow = state.workflow) {
+  if (workflow === "all") return true;
+  if (m.modality === "image") {
+    const acceptsInput = Boolean(m.supports?.imageEdit || m.supports?.referenceImages || m.editModel);
+    return workflow === "edit" ? acceptsInput : !acceptsInput;
+  }
+  if (m.modality === "video") {
+    const v = m.video || {};
+    if (workflow === "generate") return v.inputKind === "t2v" || v.inputKind === "both";
+    if (workflow === "edit") return v.inputKind === "i2v" || v.inputKind === "both" || Boolean(v.referenceImages);
+  }
+  return true;
+}
+
+function filteredModels(modality = state.modality, workflow = state.workflow) {
+  const matches = state.catalog.filter((m) => m.modality === modality && modelMatchesWorkflow(m, workflow));
+  return matches.length ? matches : state.catalog.filter((m) => m.modality === modality);
+}
+
 function defaultModelFor(modality) {
-  const inMod = state.catalog.filter((m) => m.modality === modality);
+  const inMod = filteredModels(modality);
   return inMod.find((m) => m.default) ?? inMod[0];
 }
 
@@ -336,11 +415,45 @@ function renderModalities() {
   );
 }
 
+function renderWorkflows() {
+  const wrap = $("#workflow-wrap");
+  const host = $("#workflow-list");
+  const options = workflowOptions();
+  if (!options.some((o) => o.id === state.workflow)) state.workflow = defaultWorkflowFor(state.modality);
+  wrap.hidden = options.length <= 1;
+  host.replaceChildren(
+    ...options.map((w) => {
+      const count = state.catalog.filter((m) => m.modality === state.modality && modelMatchesWorkflow(m, w.id)).length;
+      const btn = document.createElement("button");
+      btn.className = "workflow" + (w.id === state.workflow ? " active" : "");
+      btn.dataset.workflow = w.id;
+      btn.innerHTML = `<span>${esc(w.label)}</span><span class="workflow-count">${count}</span>`;
+      btn.addEventListener("click", () => switchWorkflow(w.id));
+      return btn;
+    }),
+  );
+}
+
+function switchWorkflow(workflow) {
+  if (workflow === state.workflow) return;
+  state.workflow = workflow;
+  state.inputs = {};
+  renderWorkflows();
+  renderModels();
+  if (!state.model || !modelMatchesWorkflow(state.model)) selectModel(defaultModelFor(state.modality).id);
+  else {
+    renderReferenceZone();
+    updateGenerateEnabled();
+  }
+}
+
 function switchModality(modality) {
   if (modality === state.modality) return;
   state.modality = modality;
+  state.workflow = defaultWorkflowFor(modality);
   state.inputs = {};
   renderModalities();
+  renderWorkflows();
   renderModels();
   selectModel(defaultModelFor(modality).id);
 }
@@ -355,11 +468,10 @@ function costLabel(m) {
 function renderModels() {
   const host = $("#model-list");
   host.replaceChildren(
-    ...state.catalog
-      .filter((m) => m.modality === state.modality)
+    ...filteredModels()
       .map((m) => {
         const card = document.createElement("button");
-        card.className = "model-card";
+        card.className = "model-card" + (state.model?.id === m.id ? " active" : "");
         card.dataset.id = m.id;
         card.innerHTML = `
         <div class="mc-top">
@@ -377,6 +489,18 @@ function renderModels() {
 function selectModel(id) {
   const model = state.catalog.find((m) => m.id === id);
   if (!model) return;
+  if (model.modality !== state.modality) {
+    state.modality = model.modality;
+    state.workflow = defaultWorkflowFor(model.modality);
+    renderModalities();
+    renderWorkflows();
+    renderModels();
+  }
+  if (!modelMatchesWorkflow(model)) {
+    state.workflow = "all";
+    renderWorkflows();
+    renderModels();
+  }
   state.model = model;
   state.options = { ...model.happyPath };
   state.inputs = {};
@@ -529,6 +653,11 @@ async function onPickFiles(fileList, slot) {
 /** Remix: feed a generated result back in as a reference (no re-upload). */
 function remixFromResult(item, src) {
   // Need a model with a references slot — switch to the capable default if not.
+  state.modality = "image";
+  state.workflow = "edit";
+  renderModalities();
+  renderWorkflows();
+  renderModels();
   if (!inputSlots(state.model).some((s) => s.field === "reference_images")) {
     const capable = state.catalog.find((m) => m.modality === "image" && m.supports.referenceImages) ?? state.model;
     selectModel(capable.id);
@@ -863,8 +992,10 @@ function fillVideoCard(card, data, prompt, model) {
     downloadImage(src, { file_id: data.file_id, mime_type: data.mime_type || "video/mp4" }),
   );
   const shareBtn = card.querySelector('[data-act="share"]');
-  if (data.file_id) shareBtn.addEventListener("click", () => copyShareLink(data.file_id));
-  else shareBtn.remove();
+  if (data.file_id) {
+    shareBtn.addEventListener("click", () => copyShareLink(data.file_id));
+    cacheCreation({ file_id: data.file_id, model: model.id, prompt, created: Date.now(), kind: "video" });
+  } else shareBtn.remove();
 }
 
 // ---------------------------------------------------------------------------
@@ -923,8 +1054,10 @@ function fillAudioCard(card, data, text) {
     downloadAudio(src, { file_id: audio.file_id, mime_type: audio.mime_type }),
   );
   const shareBtn = card.querySelector('[data-act="share"]');
-  if (audio.file_id) shareBtn.addEventListener("click", () => copyShareLink(audio.file_id));
-  else shareBtn.remove();
+  if (audio.file_id) {
+    shareBtn.addEventListener("click", () => copyShareLink(audio.file_id));
+    cacheCreation({ file_id: audio.file_id, model: state.model.id, prompt: text, created: Date.now(), kind: "audio" });
+  } else shareBtn.remove();
 }
 
 function audioSrc(audio) {
@@ -992,8 +1125,8 @@ function fillResultCard(card, data, prompt) {
     <div class="result-meta">
       <span class="rm-cost">${state.model.label} · ${cost}</span>
       <div class="result-actions">
-        <button class="icon-btn" data-act="remix">⇄ Remix</button>
-        <button class="icon-btn" data-act="animate">🎬 Video</button>
+        <button class="icon-btn" data-act="remix">Remix</button>
+        <button class="icon-btn" data-act="animate">Animate</button>
         <button class="icon-btn" data-act="share">Share</button>
         <button class="icon-btn" data-act="download">Download</button>
       </div>
@@ -1007,6 +1140,7 @@ function fillResultCard(card, data, prompt) {
     remixBtn.addEventListener("click", () => remixFromResult(item, src));
     animateBtn.addEventListener("click", () => animateImage(item.file_id, src));
     shareBtn.addEventListener("click", () => copyShareLink(item.file_id));
+    cacheCreation({ file_id: item.file_id, model: state.model.id, prompt, created: Date.now(), kind: "image" });
   } else {
     // Remix, animate and share all need a stored file_id.
     remixBtn.remove();
