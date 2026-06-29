@@ -109,6 +109,9 @@
         <button type="button" data-src="tab" class="src-opt field px-3 py-2.5 text-sm font-medium">▶️ Browser tab</button>
       </div>
 
+      <label class="block text-sm font-medium mb-2">Model</label>
+      <select id="modelSelect" class="field w-full px-3 py-2.5 mb-5"></select>
+
       <label class="block text-sm font-medium mb-2">Translate into</label>
       <select id="targetSelect" class="field w-full px-3 py-2.5 mb-5"></select>
 
@@ -169,6 +172,7 @@
     const landing = document.getElementById("landing");
     const session = document.getElementById("session");
     const targetSelect = document.getElementById("targetSelect");
+    const modelSelect = document.getElementById("modelSelect");
     const startBtn = document.getElementById("startBtn");
     const endBtn = document.getElementById("endBtn");
     const micBtn = document.getElementById("micBtn");
@@ -229,6 +233,12 @@
     (async () => {
       try {
         const cfg = await (await fetch("/api/config")).json();
+        for (const m of (cfg.models || [])) {
+          const o = document.createElement("option");
+          o.value = m.id; o.textContent = m.label;
+          if (m.id === cfg.defaultModel) o.selected = true;
+          modelSelect.appendChild(o);
+        }
         for (const l of cfg.languages) {
           const o = document.createElement("option");
           o.value = l.code; o.textContent = l.label;
@@ -481,6 +491,7 @@
 
     async function startSession() {
       const target = targetSelect.value;
+      const model = modelSelect.value;
       startBtn.disabled = true;
 
       // Acquire the capture stream INSIDE the click gesture. getDisplayMedia
@@ -503,7 +514,7 @@
         const resp = await fetch("/api/realtime/session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ target }),
+          body: JSON.stringify({ target, model }),
         });
         if (!resp.ok) throw new Error((await resp.json()).error || resp.statusText);
         const ticket = await resp.json();
