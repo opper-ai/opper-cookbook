@@ -46,7 +46,36 @@ const PUBLIC_WS_BASE =
   process.env.OPPER_WS_BASE ||
   OPPER_BASE_URL.replace(/^http/, "ws").replace(/\/$/, "");
 
-const MODEL_ID = "gemini/gemini-3.5-live-translate-preview";
+// The translation models the browser may pick. Like the language menu, this
+// is the policy boundary — the browser POSTs a choice, the server validates
+// it against this allowlist and binds it onto the ticket via locked_fields.
+// Both are speech-to-speech translation models that auto-detect the source
+// language; they differ on the wire (different providers) but the gateway
+// normalizes that, and the client reads each model's audio sample rate from
+// session.started, so no per-model client logic is needed.
+type Model = {
+  id: string;
+  label: string;
+  // Source-language captions. Free on Gemini (folds into the audio-token
+  // meter). On OpenAI realtime-translate, source transcripts need a separate
+  // gpt-realtime-whisper sub-mode (extra per-minute cost) and the gateway
+  // adapter doesn't surface source-transcript deltas yet, so we leave it off
+  // there — translated (target) captions still work via output_transcription.
+  inputTranscription: boolean;
+};
+const MODELS: Model[] = [
+  {
+    id: "gemini/gemini-3.5-live-translate-preview",
+    label: "Gemini 3.5 Live Translate",
+    inputTranscription: true,
+  },
+  {
+    id: "openai/gpt-realtime-translate",
+    label: "OpenAI GPT Realtime Translate",
+    inputTranscription: false,
+  },
+];
+const DEFAULT_MODEL = MODELS[0].id;
 
 // The languages the browser may pick as a translation target. The browser
 // POSTs its choice; this server validates against the list before binding
@@ -86,21 +115,21 @@ if (!OPPER_API_KEY) {
 // it cannot switch models or change the target language.
 // ---------------------------------------------------------------------------
 
-async function mintTranslateTicket(targetLanguage: string): Promise<{
+async function mintTranslateTicket(targetLanguage: string, model: Model): Promise<{
   clientSecret: string;
   expiresAt: string;
   wsBaseUrl: string;
 }> {
-  const config = {
-    model: MODEL_ID,
+  const config: Record<string, unknown> = {
+    model: model.id,
     translation_target_language: targetLanguage,
-    // Captions for both sides of the conversation: the source-language
-    // transcript of what was said, and the translated text the model
-    // speaks. Both fold into the audio token meter (no extra charge on
-    // Gemini), and give the UI something to render alongside the audio.
-    input_transcription: true,
+    // Translated (target-language) captions — what the model speaks. Drives
+    // the on-screen subtitles; supported on every translation model.
     output_transcription: true,
   };
+  // Source-language captions only when the model supports them cheaply
+  // (see Model.inputTranscription).
+  if (model.inputTranscription) config.input_transcription = true;
 
   const resp = await fetch(`${OPPER_BASE_URL}/v3/realtime-sessions`, {
     method: "POST",
@@ -168,7 +197,12 @@ app.use(express.static(join(__dirname, "public")));
 // dropdown. The browser cannot add to this list — anything it posts back
 // is validated against TARGET_LANGUAGES before the ticket is minted.
 app.get("/api/config", (_req, res) => {
-  res.json({ languages: TARGET_LANGUAGES, defaultTarget: DEFAULT_TARGET });
+  res.json({
+    languages: TARGET_LANGUAGES,
+    defaultTarget: DEFAULT_TARGET,
+    models: MODELS.map((m) => ({ id: m.id, label: m.label })),
+    defaultModel: DEFAULT_MODEL,
+  });
 });
 
 // Mint endpoint. Browser POSTs its chosen target language; we validate
@@ -184,9 +218,18 @@ app.post("/api/realtime/session", async (req, res) => {
       });
     }
 
-    const ticket = await mintTranslateTicket(lang.code);
-    console.log(`  Minted translate ticket: target=${lang.code} (${lang.label}), expires ${ticket.expiresAt}`);
-    res.json({ ...ticket, target: lang.code, targetLabel: lang.label });
+    const requestedModel = (req.body?.model as string | undefined) || DEFAULT_MODEL;
+    const model = MODELS.find((m) => m.id === requestedModel);
+    if (!model) {
+      return res.status(400).json({
+        error: `model "${requestedModel}" not in allowlist`,
+        allowed: MODELS.map((m) => m.id),
+      });
+    }
+
+    const ticket = await mintTranslateTicket(lang.code, model);
+    console.log(`  Minted translate ticket: model=${model.id}, target=${lang.code} (${lang.label}), expires ${ticket.expiresAt}`);
+    res.json({ ...ticket, target: lang.code, targetLabel: lang.label, model: model.id });
   } catch (err) {
     console.error("  Mint failed:", err);
     res.status(500).json({ error: String(err) });
@@ -202,7 +245,7 @@ async function main() {
   const port = await findPort(PREFERRED_PORT);
   app.listen(port, () => {
     console.log(`  Ready at http://localhost:${port}`);
-    console.log(`  Model:       ${MODEL_ID}`);
+    console.log(`  Models:      ${MODELS.map((m) => m.id).join(", ")}`);
     console.log(`  Mint:        POST /api/realtime/session`);
     console.log(`  Realtime WS: ${PUBLIC_WS_BASE}/v3/realtime  (browser-direct)\n`);
   });
