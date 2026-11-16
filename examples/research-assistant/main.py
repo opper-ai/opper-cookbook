@@ -67,38 +67,11 @@ def main():
                     print(f"   ✓ Fetched {url[:60]}... ({len(page.content)} chars)")
                 except Exception as e:
                     print(f"   ✗ Failed {url[:60]}...: {e}")
+        relevant_text = "\n\n".join(page["content"] for page in pages)
         print()
 
-        # ── 4. Knowledge base ────────────────────────────────────────────────
-        print("④ Setting up knowledge base...")
-        with opper.trace("knowledge-base"):
-            kb_name = f"research-{topic[:30].replace(' ', '-')}"
-            try:
-                kb = opper.knowledge.get_by_name(kb_name)
-                print(f"   Reusing existing KB: {kb.id} ({kb.count} docs)")
-            except Exception:
-                kb = opper.knowledge.create(name=kb_name)
-                print(f"   Created new KB: {kb.id}")
-
-            for i, page in enumerate(pages):
-                opper.knowledge.add(
-                    kb.id,
-                    content=page["content"],
-                    metadata={"source": page["url"], "index": i},
-                )
-                print(f"   Added doc {i+1}/{len(pages)}")
-
-            # Semantic query
-            print(f"\n   Querying KB for: '{topic}'")
-            results = opper.knowledge.query(kb.id, query=topic, top_k=3)
-            relevant_text = ""
-            for r in results:
-                print(f"   [{r.score:.3f}] {r.content[:80]}...")
-                relevant_text += r.content + "\n\n"
-        print()
-
-        # ── 5. Structured entity extraction ──────────────────────────────────
-        print("⑤ Extracting entities (Pydantic structured output)...")
+        # ── 4. Structured entity extraction ──────────────────────────────────
+        print("④ Extracting entities (Pydantic structured output)...")
         with opper.trace("entity-extraction"):
             entity_result = opper.call(
                 "research-extract-entities",
@@ -115,8 +88,8 @@ def main():
             print(f"   Concepts:      {entities.concepts}")
         print()
 
-        # ── 6. Stream final report ───────────────────────────────────────────
-        print("⑥ Streaming research report...\n")
+        # ── 5. Stream final report ───────────────────────────────────────────
+        print("⑤ Streaming research report...\n")
         print("-" * 60)
         with opper.trace("stream-report"):
             full_report = ""
@@ -145,8 +118,8 @@ def main():
         print("-" * 60)
         print()
 
-        # ── 7. Generate cover image ─────────────────────────────────────────
-        print("⑦ Generating cover image...")
+        # ── 6. Generate cover image ─────────────────────────────────────────
+        print("⑥ Generating cover image...")
         with opper.trace("image-generation"):
             image = opper.generate_image(
                 "research-cover-image",
@@ -159,22 +132,16 @@ def main():
             print(f"   Saved to: {saved_path}")
         print()
 
-        # ── 8. Function management ───────────────────────────────────────────
-        print("⑧ Listing auto-created functions...")
+        # ── 7. Function management ───────────────────────────────────────────
+        print("⑦ Listing auto-created functions...")
         functions = opper.functions.list()
         research_fns = [f for f in functions if f.name.startswith("research-")]
         for fn in research_fns:
             print(f"   • {fn.name} (hits: {fn.hit_count})")
         print()
 
-        # ── 9. Cleanup ──────────────────────────────────────────────────────
-        print("⑨ Cleaning up knowledge base...")
-        opper.knowledge.delete(kb.id)
-        print(f"   Deleted KB {kb.id}")
-        print()
-
-    # ── 10. Trace info ───────────────────────────────────────────────────────
-    print("⑩ Trace info:")
+    # ── 8. Trace info ────────────────────────────────────────────────────────
+    print("⑧ Trace info:")
     print(f"   Trace ID: {root_span.trace_id}")
     print(f"   Root span: {root_span.id}")
     print(f"\n{'='*60}")

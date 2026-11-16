@@ -175,46 +175,8 @@ async function main() {
       });
       console.log();
 
-      // ── 5. Knowledge base ─────────────────────────────────────────────
-      console.log("⑤ Setting up knowledge base...");
-      const kbName = `analyzer-content`;
-      let kb: { id: string };
-      try {
-        kb = await opper.knowledge.getByName(kbName);
-        console.log(`   Reusing existing KB: ${kb.id}`);
-      } catch {
-        kb = await opper.knowledge.create({ name: kbName });
-        console.log(`   Created new KB: ${kb.id}`);
-      }
-
-      await opper.traced("knowledge-base", async () => {
-        await opper.knowledge.add(kb.id, {
-          content: JSON.stringify(sentiment),
-          metadata: { type: "sentiment" },
-        });
-        await opper.knowledge.add(kb.id, {
-          content: JSON.stringify(entities),
-          metadata: { type: "entities" },
-        });
-        await opper.knowledge.add(kb.id, {
-          content: JSON.stringify(topics),
-          metadata: { type: "topics" },
-        });
-        console.log("   Added 3 analysis documents");
-
-        const results = await opper.knowledge.query(kb.id, {
-          query: "What are the main themes and notable people?",
-          top_k: 3,
-        });
-        console.log("   Query results:");
-        for (const r of results) {
-          console.log(`     [${r.score.toFixed(3)}] ${r.content.slice(0, 80)}...`);
-        }
-      });
-      console.log();
-
-      // ── 6. Stream comprehensive report ────────────────────────────────
-      console.log("⑥ Streaming analysis report...\n");
+      // ── 5. Stream comprehensive report ────────────────────────────────
+      console.log("⑤ Streaming analysis report...\n");
       console.log("-".repeat(60));
       await opper.traced("stream-report", async () => {
         for await (const chunk of opper.stream("analyzer-report", {
@@ -242,8 +204,8 @@ async function main() {
       console.log("-".repeat(60));
       console.log();
 
-      // ── 7. Text-to-Speech ─────────────────────────────────────────────
-      console.log("⑦ Generating audio summary...");
+      // ── 6. Text-to-Speech ─────────────────────────────────────────────
+      console.log("⑥ Generating audio summary...");
       await opper.traced("text-to-speech", async () => {
         const spokenSummary = `Content analysis complete. The overall sentiment is ${sentiment.sentiment}. The primary topic is ${topics.primaryTopic}. Key entities include ${entities.people.slice(0, 3).join(", ") || entities.organizations.slice(0, 3).join(", ") || "various subjects"}.`;
 
@@ -255,8 +217,8 @@ async function main() {
       });
       console.log();
 
-      // ── 8. Function management ────────────────────────────────────────
-      console.log("⑧ Listing auto-created functions...");
+      // ── 7. Function management ────────────────────────────────────────
+      console.log("⑦ Listing auto-created functions...");
       const funcsResp = await opper.functions.listFunctions();
       const analyzerFns = funcsResp.functions.filter((f: any) => f.name?.startsWith("analyzer-"));
       for (const fn of analyzerFns) {
@@ -273,13 +235,8 @@ async function main() {
       }
       console.log();
 
-      // ── 9. Cleanup ────────────────────────────────────────────────────
-      console.log("⑨ Cleaning up knowledge base...");
-      await opper.knowledge.deleteKnowledgeBase(kb.id);
-      console.log(`   Deleted KB ${kb.id}\n`);
-
-      // ── 10. Trace info ────────────────────────────────────────────────
-      console.log("⑩ Trace info:");
+      // ── 8. Trace info ─────────────────────────────────────────────────
+      console.log("⑧ Trace info:");
       console.log(`   Trace ID: ${rootSpan.traceId}`);
       console.log(`   Root span: ${rootSpan.id}`);
     }

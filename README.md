@@ -7,8 +7,8 @@ Examples and guides for building with [Opper](https://opper.ai). PRs are welcome
 | Example | Language | Description |
 |---------|----------|-------------|
 | [media-studio](examples/media-studio/) | TypeScript | Click-first media generation studio — image gen across many providers via `/v3/images`, reference uploads + stored/shareable results via `/v3/files`, a structured-output "intent bar", optional Login with Opper, web UI |
-| [research-assistant](examples/research-assistant/) | Python | Web search, knowledge base, structured output, streaming, image generation, tracing |
-| [content-analyzer](examples/content-analyzer/) | TypeScript | Parallel analysis, embeddings, knowledge base, streaming, text-to-speech, tracing |
+| [research-assistant](examples/research-assistant/) | Python | Web search, structured output, streaming, image generation, tracing |
+| [content-analyzer](examples/content-analyzer/) | TypeScript | Parallel analysis, embeddings, streaming, text-to-speech, tracing |
 | [chatbot-openresponses](examples/chatbot-openresponses/) | TypeScript | OpenResponses endpoint via raw fetch(), agentic tool loop, image generation, TTS, web UI |
 | [brainstorm-time](examples/brainstorm-time/) | TypeScript | Realtime voice brainstorming — browser-direct WebSocket via ephemeral tickets, mic input, image generation, web search, live idea board |
 | [live-translate](examples/live-translate/) | TypeScript | Realtime speech-to-speech translation — browser-direct WebSocket via ephemeral tickets, model + target language locked on the ticket, live captions (Gemini 3.5 Live Translate) |
@@ -17,7 +17,7 @@ Examples and guides for building with [Opper](https://opper.ai). PRs are welcome
 | [login-with-opper-web](examples/login-with-opper-web/) | JavaScript | OAuth login flow, token exchange, inference — Express web app with branded button |
 | [login-with-opper-cli](examples/login-with-opper-cli/) | JavaScript | Device Authorization Flow for CLI apps — code-based login, polling, inference |
 
-The SDK examples showcase the full Opper SDK v3 API surface: `opper.call()`, `opper.stream()`, `opper.trace()`, knowledge base operations, and more. The chatbot example demonstrates using the OpenResponses endpoint directly via `fetch()`; the brainstorm example demonstrates the Realtime API with bidirectional voice streaming via browser-direct WebSocket and ephemeral tickets.
+The SDK examples showcase the full Opper SDK v3 API surface: `opper.call()`, `opper.stream()`, `opper.trace()`, and more. The chatbot example demonstrates using the OpenResponses endpoint directly via `fetch()`; the brainstorm example demonstrates the Realtime API with bidirectional voice streaming via browser-direct WebSocket and ephemeral tickets.
 
 ## Legacy examples
 

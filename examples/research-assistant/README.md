@@ -1,11 +1,10 @@
 # Research Assistant
 
-A Python example that builds an AI-powered research assistant using the Opper SDK v3. Given a topic, it searches the web, fetches pages, stores them in a knowledge base, extracts entities, and streams a final research report.
+A Python example that builds an AI-powered research assistant using the Opper SDK v3. Given a topic, it searches the web, fetches pages, extracts entities, and streams a final research report.
 
 ## Features demonstrated
 
 - **Web search & fetch** — `opper.beta.web.search()` and `opper.beta.web.fetch()`
-- **Knowledge base** — create, add documents, semantic query, delete
 - **Structured output** — Pydantic models as `output_schema`
 - **Streaming** — token-by-token report generation with `opper.stream()`
 - **Image generation** — `opper.generate_image()`
