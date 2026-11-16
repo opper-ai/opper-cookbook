@@ -11,7 +11,6 @@ Here are the key concepts of Opper:
 - A `span` is a log of a call. But unlike ordinary logs, a span is built to be able to hold metrics, evaluations and be tied together with other spans to form what is called a trace. A trace is a chain of spans.
 - A `metric` is a data point that you can attach to a span. It is a flexible way to provide feedback on the success of a call from code. It can be used for storing results end user feedback such as thumbs up or down, performance timers or the result of small checks.  
 - A `dataset` is a collection of example outputs that can act as ground truth for success of a task. Dataset entries can be used for testing changes to prompts, alternative models and be used as examples for the model.
-- A `knowledge` base is database equipped with semantic similarity functionality. You can use it to index knowledge and retrieve the semantically relevant parts of it. Good for memory or knowledge applications. 
 
 # Best practices
 
@@ -21,7 +20,7 @@ Here are the best practices for building reliable AI implementations with these 
 - Always define clear schemas for the output, with descriptions for fields to improve the understanding for the model
 - Define a schema for the input with descriptions for fields to improve the understanding for the model, and leave out explanation of this in instructions.
 - Sparingly use natural language instructions, use schemas and field descriptions to define the instructions as much as possible.
-- Always start a trace to have subsequent calls and indexing operations as children of the parent span. This will make it easier to understand the flow of the application in the Opper UI.
+- Always start a trace to have subsequent calls as children of the parent span. This will make it easier to understand the flow of the application in the Opper UI.
 - Leave out the model unless you have a specific reason to do so, model optimization is preferably a later optimization.
 - Perform small and simple evaluations of outputs of calls in code to verify quality or assumptions, to be able to spot issues early
 - Include a field `thoughts` as the first item in the output schema to improve quality of the response. 
@@ -159,77 +158,3 @@ def main():
 
 main()
 ```
-
-## Performing knowledge indexing and retrieval
-    
-Here is an example of how to index and retrieve data with the Opper SDK. Note how we pick a descriptive knowledge base name, and how we add metadata to documents to be able to use that information when composing responses.  
-
-```python
-from opperai import Opper
-import os
-import time
-from pydantic import BaseModel, Field
-
-class Response(BaseModel):
-    references: list[str] | None = Field(default=None, description="A list of references to the sources of the information in the response")
-    response: str = Field(description="The response to the question with each fact reference as a footnote")
-
-def main():
-    opper = Opper(http_bearer=os.getenv("OPPER_API_KEY"))
-    
-    # Try to get existing knowledge base
-    try:
-        knowledge_base = opper.knowledge.get_by_name(knowledge_base_name="my-knowledge-base")
-    except:
-        knowledge_base = None
-
-    # We prepare the knowledge base if it doesn't exist
-    if knowledge_base is None:
-        knowledge_base = opper.knowledge.create(
-            name="my-knowledge-base",
-        )
-
-        # It takes a while for the knowledge base to be ready
-        time.sleep(3)
-
-        # Add some text with facts to the knowledge base
-        opper.knowledge.add(
-            knowledge_base_id=knowledge_base.id,
-            content="Reddit was founded in 2005. Reddit's headquarters are in San Francisco. Reddit reported a revenue of $100 million in 2023.",
-            metadata={
-                "source": "https://www.reddit.com",
-            },
-        )
-
-        # Add another document with Reddit related facts
-        opper.knowledge.add(
-            knowledge_base_id=knowledge_base.id,
-            content="Reddit has over 430 million monthly active users. Reddit was acquired by Condé Nast in 2006. Reddit's mascot is named Snoo.",
-            metadata={
-                "source": "https://www.wikipedia.com/reddit",
-            },
-        )
-
-    query = "What do you know about Reddit?"
-    # Query the knowledge base with a question related to the facts
-    results = opper.knowledge.query(
-        knowledge_base_id=knowledge_base.id,
-        query=query,
-        top_k=5  # optional number of chunks to return
-    )
-
-    # Use the call function with the retrieved knowledge
-    response = opper.call(
-        name="answer_question",
-        instructions="You are provided with knowledge about a topic. Answer the question using only this provided knowledge. If there is no knowledge, just say you dont know.",
-        input={
-            "question": query,
-            "knowledge": results
-        },
-        output_schema=Response
-    )
-
-    print(response.json_payload)
-
-main()
-``` 
